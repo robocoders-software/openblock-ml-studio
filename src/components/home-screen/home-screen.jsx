@@ -39,7 +39,7 @@ const BlocksIcon = () => (
     <svg viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
         <rect x="4"  y="28" width="24" height="16" rx="4" fill="#FF8C42"/>
         <rect x="4"  y="28" width="10" height="6"  rx="2" fill="#FF6B00"/>
-        <rect x="36" y="16" width="24" height="16" rx="4" fill="#4C97FF"/>
+        <rect x="36" y="16" width="24" height="16" rx="4" fill="#9966FF"/>
         <rect x="36" y="16" width="10" height="6"  rx="2" fill="#1A73E8"/>
         <rect x="20" y="40" width="24" height="16" rx="4" fill="#9B59B6"/>
         <rect x="20" y="40" width="10" height="6"  rx="2" fill="#7D3C98"/>

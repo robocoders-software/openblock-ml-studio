@@ -401,11 +401,34 @@ const MLTrainingPage = ({project, onBack, onUseInBlocks, onUpdateProject}) => {
     const classifierRef = useRef(null);
     const mobileNetRef  = useRef(null);
 
+    /* ── Live training API ref — always current, exposed via bridge ── */
+    const trainingAPIRef = useRef({});
+
     const canvasRef     = useRef(null);
     const classCardRefs = useRef([]);
     const trainCardRef  = useRef(null);
     const testCardRef   = useRef(null);
     const [svgPaths,    setSvgPaths]   = useState([]);
+
+    /* ── Keep trainingAPI ref live (updated every render — no stale closures) ── */
+    trainingAPIRef.current = {
+        addTrainingImage: addImages,
+        startTraining:    trainModel,
+        getStatus:        () => isTraining ? 'training' : isTrained ? 'ready' : 'idle',
+        clearTraining:    () => { setData({}); setTrained(false); },
+        labels,
+        trainingData
+    };
+
+    /* ── Push live status updates to the bridge when training state changes ── */
+    useEffect(() => {
+        const model = typeof window !== 'undefined' && window.__openblockMLModel;
+        if (!model || model.projectId !== project.id) return;
+        model.trainingStatus = isTraining ? 'training' : isTrained ? 'ready' : 'idle';
+        model.labels         = labels;
+        model.classifier     = classifierRef.current;
+        model.mobileNet      = mobileNetRef.current;
+    }, [isTraining, isTrained, labels]); // eslint-disable-line react-hooks/exhaustive-deps
 
     /* ── Enumerate cameras ── */
     useEffect(() => {
@@ -556,12 +579,15 @@ const MLTrainingPage = ({project, onBack, onUseInBlocks, onUpdateProject}) => {
     /* ── Deploy model to window.__openblockMLModel ── */
     const deployModel = () => {
         setActiveModel({
-            projectId:   project.id,
-            projectName: project.name,
-            type:        'images',
+            projectId:     project.id,
+            projectName:   project.name,
+            type:          'images',
             labels,
-            classifier:  classifierRef.current,
-            mobileNet:   mobileNetRef.current
+            classifier:    classifierRef.current,
+            mobileNet:     mobileNetRef.current,
+            trainingStatus: isTraining ? 'training' : isTrained ? 'ready' : 'idle',
+            // Pass ref itself so VM extension always calls through to latest closures
+            _trainingAPI:  trainingAPIRef
         });
     };
 
