@@ -1,3 +1,13 @@
+/* ── ML Training Page ─────────────────────────────────────────────
+   primary:      #9966FF  — brand purple, headers, primary buttons
+   primary-dark: #7040C0  — hover / pressed state
+   secondary:    #774DCB  — secondary elements
+   bg-light:     #F0E8FF  — subtle tinted backgrounds
+   bg-xlight:    #F8F4FF  — hover backgrounds
+   border-light: #C8A8F0  — borders, dividers
+   canvas-bg:    #EBEBEB  — neutral canvas background
+──────────────────────────────────────────────────────────────── */
+
 /* ── Full-page wrapper ── */
 .page {
     position: fixed;
@@ -9,16 +19,17 @@
     overflow: hidden;
 }
 
-/* ── Top header (dark purple) ── */
+/* ── Top header ── */
 .header {
     height: 50px;
-    background: #4a0080;
+    background: #9966FF;
     display: flex;
     align-items: center;
     padding: 0 16px;
     flex-shrink: 0;
     color: white;
     gap: 16px;
+    box-shadow: 0 2px 8px rgba(153, 102, 255, 0.35);
 }
 .headerTitle {
     font-size: 17px;
@@ -29,12 +40,12 @@
     display: flex;
     gap: 20px;
     font-size: 13px;
-    opacity: 0.85;
+    opacity: 0.9;
     cursor: pointer;
 }
 .headerBackBtn {
-    background: rgba(255,255,255,0.15);
-    border: 1.5px solid rgba(255,255,255,0.5);
+    background: rgba(255, 255, 255, 0.18);
+    border: 1.5px solid rgba(255, 255, 255, 0.55);
     color: white;
     border-radius: 20px;
     padding: 5px 14px;
@@ -43,24 +54,25 @@
     display: flex;
     align-items: center;
     gap: 5px;
+    transition: background 0.15s;
 }
-.headerBackBtn:hover { background: rgba(255,255,255,0.25); }
+.headerBackBtn:hover { background: rgba(255, 255, 255, 0.3); }
 
-/* ── Sub-header (lavender) ── */
+/* ── Sub-header ── */
 .subHeader {
     height: 54px;
-    background: #ede0f8;
+    background: #F0E8FF;
     display: flex;
     align-items: center;
     padding: 0 16px;
     gap: 12px;
     flex-shrink: 0;
-    border-bottom: 1px solid #d8c0f0;
+    border-bottom: 1px solid #C8A8F0;
 }
 .subHeaderIcon {
     width: 36px;
     height: 36px;
-    background: #4a0080;
+    background: #9966FF;
     border-radius: 8px;
     display: flex;
     align-items: center;
@@ -72,10 +84,10 @@
 .subHeaderType {
     font-size: 15px;
     font-weight: 700;
-    color: #4a0080;
+    color: #9966FF;
 }
 .infoIcon {
-    background: #4a0080;
+    background: #9966FF;
     color: white;
     border-radius: 50%;
     width: 18px;
@@ -91,10 +103,10 @@
 .divider {
     width: 1px;
     height: 30px;
-    background: #c0a0e0;
+    background: #C8A8F0;
 }
 .projectNamePill {
-    background: #7b2fbe;
+    background: #9966FF;
     color: white;
     border-radius: 8px;
     padding: 5px 14px;
@@ -102,7 +114,7 @@
     font-weight: 600;
 }
 .uploadFolderBtn {
-    background: #4a0080;
+    background: #9966FF;
     color: white;
     border: none;
     border-radius: 20px;
@@ -111,18 +123,20 @@
     font-weight: 600;
     cursor: pointer;
     white-space: nowrap;
+    transition: background 0.15s;
 }
-.uploadFolderBtn:hover { background: #6a00c0; }
+.uploadFolderBtn:hover { background: #7040C0; }
 .saveBtn {
     background: none;
     border: none;
     cursor: pointer;
-    color: #4a0080;
+    color: #9966FF;
     font-size: 20px;
     padding: 4px 6px;
     border-radius: 6px;
+    transition: background 0.15s;
 }
-.saveBtn:hover { background: #d8c0f0; }
+.saveBtn:hover { background: #E0CCFF; }
 .spacer { flex: 1; }
 .webcamLabel {
     font-size: 12px;
@@ -131,7 +145,7 @@
     white-space: nowrap;
 }
 .webcamSelect {
-    border: 1.5px solid #c0a0e0;
+    border: 1.5px solid #C8A8F0;
     border-radius: 8px;
     padding: 5px 10px;
     font-size: 12px;
@@ -139,7 +153,9 @@
     background: white;
     cursor: pointer;
     max-width: 220px;
+    transition: border-color 0.2s;
 }
+.webcamSelect:focus { border-color: #9966FF; outline: none; }
 
 /* ── Canvas (main area) ── */
 .canvas {
@@ -179,7 +195,7 @@
     background: white;
     border-radius: 8px;
     overflow: hidden;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
 }
 .classCardHeader {
     display: flex;
@@ -196,32 +212,35 @@
 .classCardEditBtn {
     background: none;
     border: none;
-    color: rgba(255,255,255,0.85);
+    color: rgba(255, 255, 255, 0.85);
     cursor: pointer;
     font-size: 14px;
     padding: 2px 4px;
     border-radius: 4px;
+    transition: background 0.15s;
 }
-.classCardEditBtn:hover { background: rgba(255,255,255,0.2); }
+.classCardEditBtn:hover { background: rgba(255, 255, 255, 0.22); }
 .classCardMenuBtn {
     background: none;
     border: none;
-    color: rgba(255,255,255,0.85);
+    color: rgba(255, 255, 255, 0.85);
     cursor: pointer;
     font-size: 18px;
     padding: 2px 4px;
     border-radius: 4px;
     position: relative;
+    transition: background 0.15s;
 }
-.classCardMenuBtn:hover { background: rgba(255,255,255,0.2); }
+.classCardMenuBtn:hover { background: rgba(255, 255, 255, 0.22); }
+
 .classCardMenu {
     position: absolute;
     right: 0;
     top: 100%;
     background: white;
-    border: 1px solid #e0d0f0;
+    border: 1px solid #C8A8F0;
     border-radius: 8px;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.14);
+    box-shadow: 0 4px 14px rgba(153, 102, 255, 0.15);
     z-index: 10;
     min-width: 140px;
     overflow: hidden;
@@ -236,10 +255,11 @@
     cursor: pointer;
     font-size: 13px;
     color: #333;
+    transition: background 0.15s;
 }
-.classCardMenu button:hover { background: #f8f0ff; }
+.classCardMenu button:hover { background: #F8F4FF; color: #9966FF; }
 .classCardMenu button.danger { color: #e53935; }
-.classCardMenu button.danger:hover { background: #fff5f5; }
+.classCardMenu button.danger:hover { background: #fff5f5; color: #e53935; }
 
 .classCardBody {
     display: flex;
@@ -248,7 +268,7 @@
 .classCardLeft {
     flex: 3;
     padding: 14px 16px;
-    border-right: 1px solid #f0e8ff;
+    border-right: 1px solid #F0E8FF;
     display: flex;
     flex-direction: column;
     gap: 10px;
@@ -269,7 +289,7 @@
     flex-direction: column;
     align-items: center;
     gap: 6px;
-    border: 1.5px dashed #b0a0c0;
+    border: 1.5px dashed #C8A8F0;
     border-radius: 8px;
     padding: 12px 16px;
     cursor: pointer;
@@ -277,9 +297,9 @@
     font-size: 12px;
     color: #666;
     min-width: 80px;
-    transition: border-color 0.2s, background 0.2s;
+    transition: border-color 0.2s, background 0.2s, color 0.2s;
 }
-.addBtn:hover { border-color: #7b2fbe; background: #f3e8ff; color: #7b2fbe; }
+.addBtn:hover { border-color: #9966FF; background: #F0E8FF; color: #9966FF; }
 .addBtnIcon {
     width: 28px;
     height: 28px;
@@ -290,8 +310,8 @@
 .nameEditInput {
     font-size: 15px;
     font-weight: 700;
-    background: rgba(255,255,255,0.2);
-    border: 1.5px solid rgba(255,255,255,0.6);
+    background: rgba(255, 255, 255, 0.2);
+    border: 1.5px solid rgba(255, 255, 255, 0.6);
     color: white;
     border-radius: 6px;
     padding: 2px 8px;
@@ -301,7 +321,7 @@
 
 .classCardRight {
     flex: 2;
-    padding: 14px 14px;
+    padding: 14px;
     display: flex;
     flex-direction: column;
     gap: 8px;
@@ -335,7 +355,7 @@
 .thumbMore {
     position: absolute;
     inset: 0;
-    background: rgba(0,0,0,0.55);
+    background: rgba(0, 0, 0, 0.55);
     color: white;
     display: flex;
     align-items: center;
@@ -350,7 +370,7 @@
     right: 2px;
     width: 16px;
     height: 16px;
-    background: rgba(0,0,0,0.65);
+    background: rgba(0, 0, 0, 0.65);
     color: white;
     border: none;
     border-radius: 50%;
@@ -367,19 +387,19 @@
 
 /* ── Add Class button ── */
 .addClassCard {
-    border: 2px dashed #a080c0;
+    border: 2px dashed #C8A8F0;
     border-radius: 8px;
     padding: 18px;
     text-align: center;
     cursor: pointer;
-    color: #7b2fbe;
+    color: #9966FF;
     font-size: 15px;
     font-weight: 700;
     background: transparent;
-    transition: background 0.2s;
+    transition: background 0.2s, border-color 0.2s;
     width: 100%;
 }
-.addClassCard:hover { background: rgba(123,47,190,0.06); }
+.addClassCard:hover { background: rgba(153, 102, 255, 0.07); border-color: #9966FF; }
 
 /* ── Right area: Training + Testing ── */
 .rightArea {
@@ -397,12 +417,12 @@
     background: white;
     border-radius: 8px;
     overflow: hidden;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
     min-width: 220px;
     max-width: 240px;
 }
 .trainingHeader {
-    background: #4a0080;
+    background: #9966FF;
     color: white;
     padding: 10px 14px;
     display: flex;
@@ -415,7 +435,7 @@
     display: flex;
     align-items: center;
     gap: 4px;
-    background: rgba(255,255,255,0.15);
+    background: rgba(255, 255, 255, 0.18);
     border-radius: 20px;
     padding: 3px 8px;
     font-size: 11px;
@@ -444,8 +464,10 @@
     flex-direction: column;
     gap: 12px;
 }
+
+/* ── Primary action: Train Model ── */
 .trainModelBtn {
-    background: #4a0080;
+    background: #9966FF;
     color: white;
     border: none;
     border-radius: 20px;
@@ -456,20 +478,24 @@
     width: 100%;
     transition: background 0.2s;
 }
-.trainModelBtn:hover:not(:disabled) { background: #6a00b0; }
-.trainModelBtn:disabled { background: #bbb; cursor: not-allowed; }
+.trainModelBtn:hover:not(:disabled) { background: #7040C0; }
+.trainModelBtn:disabled { background: #C8A8F0; cursor: not-allowed; }
+
+/* ── Progress bar ── */
 .progressTrack {
     height: 6px;
-    background: #f0e8ff;
+    background: #F0E8FF;
     border-radius: 3px;
     overflow: hidden;
 }
 .progressFill {
     height: 100%;
-    background: linear-gradient(90deg, #27ae60, #2ecc71);
+    background: linear-gradient(90deg, #9966FF, #774DCB);
     border-radius: 3px;
     transition: width 0.3s;
 }
+
+/* ── Status text ── */
 .trainStatusText {
     font-size: 11px;
     color: #666;
@@ -481,22 +507,47 @@
     color: #27ae60;
     text-align: center;
 }
+.trainCompletedText {
+    font-size: 12px;
+    font-weight: 700;
+    color: #27ae60;
+    text-align: center;
+}
+
+/* ── Train Again ── */
+.trainAgainBtn {
+    background: transparent;
+    color: #9966FF;
+    border: 2px solid #9966FF;
+    border-radius: 20px;
+    padding: 9px 12px;
+    font-size: 13px;
+    font-weight: 700;
+    cursor: pointer;
+    width: 100%;
+    transition: background 0.2s, color 0.2s;
+}
+.trainAgainBtn:hover:not(:disabled) { background: #9966FF; color: white; }
+.trainAgainBtn:disabled { border-color: #C8A8F0; color: #C8A8F0; cursor: not-allowed; }
+
+/* ── Advanced accordion footer ── */
 .trainingFooter {
-    border-top: 1px solid #f0e8ff;
+    border-top: 1px solid #F0E8FF;
     padding: 10px 14px;
     display: flex;
     align-items: center;
     justify-content: space-between;
     cursor: pointer;
-    color: #7b2fbe;
+    color: #9966FF;
     font-size: 13px;
     font-weight: 600;
+    transition: background 0.15s;
 }
-.trainingFooter:hover { background: #faf0ff; }
+.trainingFooter:hover { background: #F8F4FF; }
 
-/* Advanced section */
+/* ── Advanced section ── */
 .advancedSection {
-    border-top: 1px solid #f0e8ff;
+    border-top: 1px solid #F0E8FF;
     padding: 12px 14px;
     display: flex;
     flex-direction: column;
@@ -512,23 +563,57 @@
 .advancedInput {
     width: 60px;
     padding: 3px 6px;
-    border: 1px solid #d0c0e8;
+    border: 1px solid #C8A8F0;
     border-radius: 6px;
     font-size: 12px;
     text-align: center;
+    transition: border-color 0.2s;
 }
+.advancedInput:focus { border-color: #9966FF; outline: none; }
+
+.advancedBtnsRow {
+    display: flex;
+    gap: 8px;
+    margin-top: 4px;
+}
+.trainReportBtn {
+    flex: 1;
+    background: #F0E8FF;
+    color: #9966FF;
+    border: none;
+    border-radius: 8px;
+    padding: 7px 8px;
+    font-size: 11px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: background 0.15s;
+}
+.trainReportBtn:hover { background: #E0CCFF; }
+.resetBtn {
+    flex: 1;
+    background: #fff0f0;
+    color: #c0392b;
+    border: none;
+    border-radius: 8px;
+    padding: 7px 8px;
+    font-size: 11px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: background 0.15s;
+}
+.resetBtn:hover { background: #ffd8d8; }
 
 /* ── Testing card ── */
 .testingCard {
     background: white;
     border-radius: 8px;
     overflow: hidden;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
     min-width: 200px;
     max-width: 240px;
 }
 .testingHeader {
-    background: #4a0080;
+    background: #9966FF;
     color: white;
     padding: 10px 14px;
     font-size: 14px;
@@ -560,17 +645,43 @@
     display: block;
     border-radius: 8px;
 }
-.testCamBtn {
-    background: #4a0080;
-    color: white;
-    border: none;
-    border-radius: 20px;
-    padding: 8px;
-    font-size: 12px;
-    font-weight: 600;
-    cursor: pointer;
+
+/* Result bars */
+.testPanelContent {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
     width: 100%;
 }
+.testByLabel {
+    font-size: 12px;
+    font-weight: 700;
+    color: #555;
+    text-align: center;
+}
+.testOptionRow {
+    display: flex;
+    gap: 10px;
+    justify-content: center;
+}
+.testOptionBtn {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    border: 1.5px solid #C8A8F0;
+    border-radius: 8px;
+    padding: 10px 14px;
+    cursor: pointer;
+    background: #fafafa;
+    font-size: 11px;
+    font-weight: 600;
+    color: #555;
+    min-width: 64px;
+    transition: border-color 0.15s, background 0.15s, color 0.15s;
+}
+.testOptionBtn:hover { border-color: #9966FF; background: #F0E8FF; color: #9966FF; }
+
 .testResultBar { margin-bottom: 6px; }
 .testResultLabelRow {
     display: flex;
@@ -582,18 +693,33 @@
 }
 .testResultTrack {
     height: 7px;
-    background: #f0e8ff;
+    background: #F0E8FF;
     border-radius: 4px;
     overflow: hidden;
 }
 .testResultFill {
     height: 100%;
-    background: linear-gradient(90deg, #4a0080, #7b2fbe);
+    background: linear-gradient(90deg, #9966FF, #774DCB);
     border-radius: 4px;
     transition: width 0.3s;
 }
 
-/* ── Use in Blocks button ── */
+/* ── Export Model button ── */
+.exportModelBtn {
+    background: rgba(255, 255, 255, 0.18);
+    border: 1.5px solid rgba(255, 255, 255, 0.6);
+    color: white;
+    border-radius: 14px;
+    padding: 4px 10px;
+    font-size: 11px;
+    font-weight: 700;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background 0.15s;
+}
+.exportModelBtn:hover { background: rgba(255, 255, 255, 0.32); }
+
+/* ── Use in Blocks (CTA — keep orange for contrast) ── */
 .useInBlocksBtn {
     background: #FF8C1A;
     border: none;
@@ -605,15 +731,102 @@
     cursor: pointer;
     width: 100%;
     margin-top: 4px;
+    transition: background 0.15s;
 }
 .useInBlocksBtn:hover:not(:disabled) { background: #e07800; }
 .useInBlocksBtn:disabled { background: #ddd; color: #999; cursor: not-allowed; }
 
-/* ── Webcam capture modal ── */
+/* ── Inline webcam in ClassCard ── */
+.inlineWebcam {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    width: 100%;
+}
+.inlineWebcamHeader {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+.webcamSectionLabel {
+    font-size: 12px;
+    font-weight: 700;
+    color: #555;
+}
+.camBackBtn {
+    background: none;
+    border: none;
+    color: #9966FF;
+    font-size: 16px;
+    cursor: pointer;
+    padding: 2px 6px;
+    border-radius: 4px;
+    line-height: 1;
+    transition: background 0.15s;
+}
+.camBackBtn:hover { background: #F0E8FF; }
+.inlineVideo {
+    width: 100%;
+    border-radius: 8px;
+    background: #111;
+    display: block;
+    max-height: 140px;
+    object-fit: cover;
+}
+.holdRow {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+}
+.holdBtn {
+    flex: 1;
+    background: #9966FF;
+    color: white;
+    border: none;
+    border-radius: 20px;
+    padding: 9px 10px;
+    font-size: 12px;
+    font-weight: 700;
+    cursor: pointer;
+    user-select: none;
+    -webkit-user-select: none;
+    transition: background 0.15s;
+}
+.holdBtn:hover:not(:disabled)  { background: #7040C0; }
+.holdBtn:active:not(:disabled) { background: #5C2FA0; }
+.holdBtn:disabled { background: #C8A8F0; cursor: not-allowed; }
+
+.gearBtn {
+    background: none;
+    border: 1.5px solid #C8A8F0;
+    color: #9966FF;
+    border-radius: 6px;
+    width: 30px;
+    height: 30px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+    cursor: pointer;
+    flex-shrink: 0;
+    transition: background 0.15s;
+}
+.gearBtn:hover { background: #F0E8FF; }
+
+/* ── Accuracy chart wrapper ── */
+.chartWrap {
+    background: #F8F4FF;
+    border: 1px solid #E0CCFF;
+    border-radius: 8px;
+    padding: 8px 4px 4px;
+    overflow: hidden;
+}
+
+/* ── Webcam modal (legacy, kept for reference) ── */
 .camOverlay {
     position: fixed;
     inset: 0;
-    background: rgba(0,0,0,0.7);
+    background: rgba(0, 0, 0, 0.7);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -658,7 +871,7 @@
 }
 .camActions { display: flex; gap: 10px; justify-content: center; }
 .camCaptureBtn {
-    background: #4a0080;
+    background: #9966FF;
     border: none;
     color: white;
     border-radius: 10px;
@@ -666,7 +879,9 @@
     font-size: 14px;
     font-weight: 700;
     cursor: pointer;
+    transition: background 0.15s;
 }
+.camCaptureBtn:hover { background: #7040C0; }
 .camCloseBtn {
     background: #f0f0f0;
     border: none;
@@ -675,194 +890,7 @@
     font-size: 14px;
     cursor: pointer;
     color: #555;
+    transition: background 0.15s;
 }
+.camCloseBtn:hover { background: #e4e4e4; }
 .camCount { font-size: 12px; color: #888; margin: 6px 0 10px; }
-
-/* ── Inline webcam in ClassCard ── */
-.inlineWebcam {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-    width: 100%;
-}
-.inlineWebcamHeader {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-}
-.webcamSectionLabel {
-    font-size: 12px;
-    font-weight: 700;
-    color: #555;
-}
-.camBackBtn {
-    background: none;
-    border: none;
-    color: #7b2fbe;
-    font-size: 16px;
-    cursor: pointer;
-    padding: 2px 6px;
-    border-radius: 4px;
-    line-height: 1;
-}
-.camBackBtn:hover { background: #f0e8ff; }
-.inlineVideo {
-    width: 100%;
-    border-radius: 8px;
-    background: #111;
-    display: block;
-    max-height: 140px;
-    object-fit: cover;
-}
-.holdRow {
-    display: flex;
-    gap: 6px;
-    align-items: center;
-}
-.holdBtn {
-    flex: 1;
-    background: #4a0080;
-    color: white;
-    border: none;
-    border-radius: 20px;
-    padding: 9px 10px;
-    font-size: 12px;
-    font-weight: 700;
-    cursor: pointer;
-    user-select: none;
-    -webkit-user-select: none;
-    transition: background 0.15s;
-}
-.holdBtn:hover:not(:disabled) { background: #6a00b0; }
-.holdBtn:active:not(:disabled) { background: #9b00ff; }
-.holdBtn:disabled { background: #bbb; cursor: not-allowed; }
-.gearBtn {
-    background: none;
-    border: 1.5px solid #d0c0e8;
-    color: #7b2fbe;
-    border-radius: 6px;
-    width: 30px;
-    height: 30px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 14px;
-    cursor: pointer;
-    flex-shrink: 0;
-}
-.gearBtn:hover { background: #f0e8ff; }
-
-/* ── Accuracy chart ── */
-.chartWrap {
-    background: #fafafe;
-    border: 1px solid #e8daf5;
-    border-radius: 8px;
-    padding: 8px 4px 4px;
-    overflow: hidden;
-}
-
-/* ── Training Completed state ── */
-.trainCompletedText {
-    font-size: 12px;
-    font-weight: 700;
-    color: #27ae60;
-    text-align: center;
-}
-.trainAgainBtn {
-    background: transparent;
-    color: #4a0080;
-    border: 2px solid #4a0080;
-    border-radius: 20px;
-    padding: 9px 12px;
-    font-size: 13px;
-    font-weight: 700;
-    cursor: pointer;
-    width: 100%;
-    transition: background 0.2s, color 0.2s;
-}
-.trainAgainBtn:hover:not(:disabled) { background: #4a0080; color: white; }
-.trainAgainBtn:disabled { border-color: #bbb; color: #bbb; cursor: not-allowed; }
-
-/* ── Advanced section buttons ── */
-.advancedBtnsRow {
-    display: flex;
-    gap: 8px;
-    margin-top: 4px;
-}
-.trainReportBtn {
-    flex: 1;
-    background: #ede0f8;
-    color: #4a0080;
-    border: none;
-    border-radius: 8px;
-    padding: 7px 8px;
-    font-size: 11px;
-    font-weight: 700;
-    cursor: pointer;
-    transition: background 0.15s;
-}
-.trainReportBtn:hover { background: #d8c0f0; }
-.resetBtn {
-    flex: 1;
-    background: #fff0f0;
-    color: #c0392b;
-    border: none;
-    border-radius: 8px;
-    padding: 7px 8px;
-    font-size: 11px;
-    font-weight: 700;
-    cursor: pointer;
-    transition: background 0.15s;
-}
-.resetBtn:hover { background: #ffd8d8; }
-
-/* ── Testing panel content ── */
-.testPanelContent {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-    width: 100%;
-}
-.testByLabel {
-    font-size: 12px;
-    font-weight: 700;
-    color: #555;
-    text-align: center;
-}
-.testOptionRow {
-    display: flex;
-    gap: 10px;
-    justify-content: center;
-}
-.testOptionBtn {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 4px;
-    border: 1.5px solid #c0a0e0;
-    border-radius: 8px;
-    padding: 10px 14px;
-    cursor: pointer;
-    background: #fafafa;
-    font-size: 11px;
-    font-weight: 600;
-    color: #555;
-    min-width: 64px;
-    transition: border-color 0.15s, background 0.15s, color 0.15s;
-}
-.testOptionBtn:hover { border-color: #7b2fbe; background: #f3e8ff; color: #7b2fbe; }
-
-/* ── Export Model button (in testing header) ── */
-.exportModelBtn {
-    background: rgba(255,255,255,0.18);
-    border: 1.5px solid rgba(255,255,255,0.6);
-    color: white;
-    border-radius: 14px;
-    padding: 4px 10px;
-    font-size: 11px;
-    font-weight: 700;
-    cursor: pointer;
-    white-space: nowrap;
-    transition: background 0.15s;
-}
-.exportModelBtn:hover { background: rgba(255,255,255,0.32); }

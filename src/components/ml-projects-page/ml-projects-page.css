@@ -1,3 +1,12 @@
+/* ── ML Projects Page ─────────────────────────────────────────────
+   primary:      #9966FF
+   primary-dark: #7040C0  (hover)
+   secondary:    #774DCB
+   bg-light:     #F0E8FF
+   bg-xlight:    #F8F4FF
+   border:       #C8A8F0
+──────────────────────────────────────────────────────────────── */
+
 .page {
     position: fixed;
     inset: 0;
@@ -8,15 +17,17 @@
     font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
 }
 
+/* ── Header ── */
 .header {
     height: 50px;
-    background: #4a0080;
+    background: #9966FF;
     display: flex;
     flex-direction: row;
     align-items: center;
     padding: 0 20px;
     color: white;
     flex-shrink: 0;
+    box-shadow: 0 2px 8px rgba(153, 102, 255, 0.3);
 }
 
 .headerTitle {
@@ -30,7 +41,7 @@
     display: flex;
     gap: 24px;
     font-size: 14px;
-    opacity: 0.85;
+    opacity: 0.9;
     cursor: pointer;
 }
 
@@ -40,7 +51,7 @@
 
 .backBtn {
     background: transparent;
-    border: 1.5px solid rgba(255, 255, 255, 0.6);
+    border: 1.5px solid rgba(255, 255, 255, 0.65);
     color: white;
     border-radius: 20px;
     padding: 6px 16px;
@@ -49,22 +60,26 @@
     display: flex;
     align-items: center;
     gap: 6px;
+    transition: background 0.15s;
 }
+.backBtn:hover { background: rgba(255,255,255,0.2); }
 
+/* ── Sub-header ── */
 .subHeader {
     height: 56px;
-    background: #f0e6ff;
+    background: #F0E8FF;
     display: flex;
     align-items: center;
     padding: 0 24px;
     gap: 16px;
     flex-shrink: 0;
+    border-bottom: 1px solid #C8A8F0;
 }
 
 .myProjects {
     font-size: 20px;
     font-weight: 700;
-    color: #4a0080;
+    color: #9966FF;
     margin: 0;
     min-width: 120px;
 }
@@ -73,12 +88,14 @@
     display: flex;
     align-items: center;
     background: white;
-    border: 1.5px solid #d0b0f0;
+    border: 1.5px solid #C8A8F0;
     border-radius: 20px;
     padding: 0 12px;
     height: 36px;
     gap: 8px;
+    transition: border-color 0.2s;
 }
+.searchWrap:focus-within { border-color: #9966FF; }
 
 .searchWrap input {
     border: none;
@@ -89,7 +106,7 @@
 }
 
 .createBtn {
-    background: #4a0080;
+    background: #9966FF;
     color: white;
     border: none;
     border-radius: 20px;
@@ -97,19 +114,24 @@
     font-size: 13px;
     font-weight: 700;
     cursor: pointer;
+    transition: background 0.15s;
 }
+.createBtn:hover { background: #7040C0; }
 
 .importBtn {
     background: white;
-    color: #4a0080;
-    border: 2px solid #4a0080;
+    color: #9966FF;
+    border: 2px solid #9966FF;
     border-radius: 20px;
     padding: 8px 20px;
     font-size: 13px;
     font-weight: 700;
     cursor: pointer;
+    transition: background 0.15s, color 0.15s;
 }
+.importBtn:hover { background: #F0E8FF; }
 
+/* ── Table ── */
 .tableWrap {
     flex: 1;
     overflow-y: auto;
@@ -122,7 +144,7 @@
 }
 
 .table thead tr {
-    background: #6a0dad;
+    background: #9966FF;
     color: white;
 }
 
@@ -134,13 +156,13 @@
 }
 
 .table tbody tr {
-    border-bottom: 1px solid #f0e0ff;
+    border-bottom: 1px solid #EDE0FF;
     cursor: pointer;
     transition: background 0.15s;
 }
 
 .table tbody tr:hover {
-    background: #f8f0ff;
+    background: #F8F4FF;
 }
 
 .table td {
@@ -162,9 +184,10 @@
     margin-top: 2px;
 }
 
+/* Purple type badge (was incorrectly blue) */
 .typeBadge {
-    background: #b0e8ff;
-    color: #0066aa;
+    background: #EDE0FF;
+    color: #774DCB;
     border-radius: 20px;
     padding: 4px 12px;
     font-size: 12px;
@@ -176,6 +199,7 @@
     color: #555;
 }
 
+/* ── Row actions menu ── */
 .menuCell {
     position: relative;
     width: 40px;
@@ -190,10 +214,12 @@
     color: #666;
     padding: 4px 8px;
     border-radius: 4px;
+    transition: background 0.15s;
 }
 
 .menuBtn:hover {
-    background: #f0e0ff;
+    background: #F0E8FF;
+    color: #9966FF;
 }
 
 .dropdown {
@@ -201,9 +227,9 @@
     right: 0;
     top: 100%;
     background: white;
-    border: 1px solid #e0d0f0;
+    border: 1px solid #C8A8F0;
     border-radius: 8px;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+    box-shadow: 0 4px 14px rgba(153, 102, 255, 0.15);
     z-index: 100;
     min-width: 120px;
     overflow: hidden;
@@ -219,12 +245,14 @@
     cursor: pointer;
     font-size: 13px;
     color: #e53935;
+    transition: background 0.15s;
 }
 
 .dropdown button:hover {
     background: #fff5f5;
 }
 
+/* ── Empty state ── */
 .emptyState {
     text-align: center;
     padding: 60px;

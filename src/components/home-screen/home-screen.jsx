@@ -37,30 +37,37 @@ const generateId = () => Math.random().toString(36).slice(2, 10);
 /* ─── Inline SVG icons ───────────────────────────── */
 const BlocksIcon = () => (
     <svg viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+        {/* Orange block */}
         <rect x="4"  y="28" width="24" height="16" rx="4" fill="#FF8C42"/>
         <rect x="4"  y="28" width="10" height="6"  rx="2" fill="#FF6B00"/>
+        {/* Brand purple block */}
         <rect x="36" y="16" width="24" height="16" rx="4" fill="#9966FF"/>
-        <rect x="36" y="16" width="10" height="6"  rx="2" fill="#1A73E8"/>
-        <rect x="20" y="40" width="24" height="16" rx="4" fill="#9B59B6"/>
-        <rect x="20" y="40" width="10" height="6"  rx="2" fill="#7D3C98"/>
+        <rect x="36" y="16" width="10" height="6"  rx="2" fill="#7040C0"/>
+        {/* Secondary purple block */}
+        <rect x="20" y="40" width="24" height="16" rx="4" fill="#774DCB"/>
+        <rect x="20" y="40" width="10" height="6"  rx="2" fill="#5C3399"/>
     </svg>
 );
 
 const AIIcon = () => (
     <svg viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
-        <ellipse cx="24" cy="28" rx="16" ry="18" fill="#9B59B6" opacity="0.9"/>
-        <ellipse cx="40" cy="28" rx="16" ry="18" fill="#7D3C98" opacity="0.9"/>
-        <ellipse cx="32" cy="28" rx="8"  ry="18" fill="#B07FD4"/>
-        <circle cx="18" cy="22" r="3" fill="white" opacity="0.8"/>
-        <circle cx="26" cy="32" r="3" fill="white" opacity="0.8"/>
-        <circle cx="38" cy="22" r="3" fill="white" opacity="0.8"/>
-        <circle cx="46" cy="32" r="3" fill="white" opacity="0.8"/>
-        <circle cx="32" cy="18" r="3" fill="white" opacity="0.8"/>
-        <line x1="18" y1="22" x2="26" y2="32" stroke="white" strokeWidth="1.5" opacity="0.5"/>
-        <line x1="26" y1="32" x2="38" y2="22" stroke="white" strokeWidth="1.5" opacity="0.5"/>
-        <line x1="38" y1="22" x2="46" y2="32" stroke="white" strokeWidth="1.5" opacity="0.5"/>
-        <line x1="18" y1="22" x2="32" y2="18" stroke="white" strokeWidth="1.5" opacity="0.5"/>
-        <line x1="32" y1="18" x2="46" y2="32" stroke="white" strokeWidth="1.5" opacity="0.5"/>
+        {/* Neural network brain — brand purple spectrum */}
+        <ellipse cx="24" cy="28" rx="16" ry="18" fill="#9966FF" opacity="0.85"/>
+        <ellipse cx="40" cy="28" rx="16" ry="18" fill="#774DCB" opacity="0.85"/>
+        <ellipse cx="32" cy="28" rx="8"  ry="18" fill="#BB88FF"/>
+        {/* Nodes */}
+        <circle cx="18" cy="22" r="3" fill="white" opacity="0.9"/>
+        <circle cx="26" cy="32" r="3" fill="white" opacity="0.9"/>
+        <circle cx="38" cy="22" r="3" fill="white" opacity="0.9"/>
+        <circle cx="46" cy="32" r="3" fill="white" opacity="0.9"/>
+        <circle cx="32" cy="18" r="3" fill="white" opacity="0.9"/>
+        {/* Connections */}
+        <line x1="18" y1="22" x2="26" y2="32" stroke="white" strokeWidth="1.5" opacity="0.55"/>
+        <line x1="26" y1="32" x2="38" y2="22" stroke="white" strokeWidth="1.5" opacity="0.55"/>
+        <line x1="38" y1="22" x2="46" y2="32" stroke="white" strokeWidth="1.5" opacity="0.55"/>
+        <line x1="18" y1="22" x2="32" y2="18" stroke="white" strokeWidth="1.5" opacity="0.55"/>
+        <line x1="32" y1="18" x2="46" y2="32" stroke="white" strokeWidth="1.5" opacity="0.55"/>
+        {/* Orange connector (blocks output) */}
         <line x1="28" y1="46" x2="36" y2="46" stroke="#FF8C1A" strokeWidth="2" strokeLinecap="round"/>
         <line x1="22" y1="50" x2="42" y2="50" stroke="#FF8C1A" strokeWidth="2" strokeLinecap="round"/>
         <line x1="28" y1="46" x2="22" y2="50" stroke="#FF8C1A" strokeWidth="2" strokeLinecap="round"/>

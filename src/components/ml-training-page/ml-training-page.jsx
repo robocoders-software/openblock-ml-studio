@@ -13,7 +13,7 @@ import {
 } from '../../lib/ml-engine.js';
 import {loadProjectImages} from '../../lib/idb.js';
 
-const CLASS_COLORS = ['#E05C3D', '#2EAA7E', '#3498DB', '#9B59B6', '#F39C12', '#E91E63', '#1ABC9C', '#E67E22'];
+const CLASS_COLORS = ['#E05C3D', '#2EAA7E', '#9966FF', '#774DCB', '#F39C12', '#E91E63', '#1ABC9C', '#E67E22'];
 const MAX_THUMBS   = 9;
 const generateId   = () => Math.random().toString(36).slice(2, 10);
 
@@ -45,8 +45,8 @@ const AccuracyChart = ({points}) => {
             ))}
             <line x1={pL} y1={pT} x2={pL} y2={H - pB} stroke="#ccc" strokeWidth="1"/>
             <line x1={pL} y1={H - pB} x2={W - pR} y2={H - pB} stroke="#ccc" strokeWidth="1"/>
-            <path d={lineD} stroke="#3d7cf5" strokeWidth="2.5" fill="none" strokeLinejoin="round" strokeLinecap="round"/>
-            <circle cx={sx(points[points.length - 1].x)} cy={sy(points[points.length - 1].y)} r="4" fill="#3d7cf5"/>
+            <path d={lineD} stroke="#9966FF" strokeWidth="2.5" fill="none" strokeLinejoin="round" strokeLinecap="round"/>
+            <circle cx={sx(points[points.length - 1].x)} cy={sy(points[points.length - 1].y)} r="4" fill="#9966FF"/>
             <text x={pL + cW / 2} y={H - 2} textAnchor="middle" fontSize="9" fill="#888">Accuracy Vs Epochs</text>
         </svg>
     );
@@ -276,50 +276,108 @@ const TestingPanel = ({isTrained, classifierRef, mobileNetRef, labels, selectedD
     const [mode,      setMode]    = useState('idle');
     const [results,   setResults] = useState([]);
     const [testImg,   setTestImg] = useState(null);
+    const [camError,  setCamError] = useState('');
 
+    /* ── Stop webcam cleanly ── */
     const stopCam = useCallback(() => {
         clearInterval(intervalRef.current);
-        if (streamRef.current) streamRef.current.getTracks().forEach(t => t.stop());
+        intervalRef.current = null;
+        if (streamRef.current) {
+            streamRef.current.getTracks().forEach(t => t.stop());
+            streamRef.current = null;
+        }
+        if (videoRef.current) videoRef.current.srcObject = null;
         setMode('idle');
         setResults([]);
+        setCamError('');
     }, []);
 
+    /* ── KEY FIX: attach stream AFTER the <video> element renders ──
+       The video element only appears in the DOM when mode === 'webcam'.
+       startWebcam calls setMode('webcam') which triggers a re-render,
+       then this effect attaches the stream to the newly mounted element.
+    ── */
+    useEffect(() => {
+        if (mode === 'webcam' && videoRef.current && streamRef.current) {
+            videoRef.current.srcObject = streamRef.current;
+        }
+    }, [mode]);
+
+    /* ── Start continuous webcam prediction ── */
     const startWebcam = useCallback(async () => {
+        setCamError('');
         const constraints = {video: selectedDeviceId ? {deviceId: {exact: selectedDeviceId}} : true};
         try {
             const stream = await navigator.mediaDevices.getUserMedia(constraints);
             streamRef.current = stream;
-            if (videoRef.current) videoRef.current.srcObject = stream;
+
+            // Switch to webcam mode — useEffect above will attach srcObject
+            // after React renders the <video> element.
             setMode('webcam');
+
+            // Start prediction interval — guard against unready video frames
+            clearInterval(intervalRef.current);
             intervalRef.current = setInterval(async () => {
-                if (!videoRef.current || !classifierRef.current || !mobileNetRef.current) return;
+                const video = videoRef.current;
+                // Skip if video not ready, no dimensions, or model not loaded
+                if (!video || !video.videoWidth || !video.videoHeight) return;
+                if (!classifierRef.current || !mobileNetRef.current) return;
                 try {
-                    const probs = await predictImages(videoRef.current, classifierRef.current, mobileNetRef.current, labels);
+                    const probs = await predictImages(
+                        video,
+                        classifierRef.current,
+                        mobileNetRef.current,
+                        labels
+                    );
                     setResults(probs);
-                } catch (_) { /* non-fatal */ }
+                } catch (err) {
+                    console.warn('[TestPanel] prediction error:', err.message);
+                }
             }, 400);
-        } catch (e) { console.error('[TestPanel]', e); }
+        } catch (e) {
+            setCamError(e.message || 'Could not access camera');
+            console.error('[TestPanel] getUserMedia error:', e);
+        }
     }, [selectedDeviceId, classifierRef, mobileNetRef, labels]);
 
+    /* ── Upload single image and classify ── */
     const handleUpload = useCallback(async e => {
         const file = e.target.files[0];
-        if (!file || !classifierRef.current || !mobileNetRef.current) return;
+        if (!file) return;
+        if (!classifierRef.current || !mobileNetRef.current) {
+            alert('Train a model first before testing.');
+            return;
+        }
         const dataUrl = await new Promise(res => {
-            const r = new FileReader(); r.onload = () => res(r.result); r.readAsDataURL(file);
+            const r = new FileReader();
+            r.onload = () => res(r.result);
+            r.readAsDataURL(file);
         });
         setTestImg(dataUrl);
+        setResults([]);
         const img = new Image();
         img.src = dataUrl;
-        await new Promise(res => { img.onload = res; });
+        await new Promise(res => { img.onload = res; img.onerror = res; });
         try {
-            const probs = await predictImages(img, classifierRef.current, mobileNetRef.current, labels);
+            const probs = await predictImages(
+                img,
+                classifierRef.current,
+                mobileNetRef.current,
+                labels
+            );
             setResults(probs);
             setMode('upload');
-        } catch (_) { /* non-fatal */ }
+        } catch (err) {
+            console.error('[TestPanel] upload classify error:', err);
+        }
         e.target.value = '';
     }, [classifierRef, mobileNetRef, labels]);
 
-    useEffect(() => () => stopCam(), [stopCam]);
+    /* ── Cleanup on unmount ── */
+    useEffect(() => () => {
+        clearInterval(intervalRef.current);
+        if (streamRef.current) streamRef.current.getTracks().forEach(t => t.stop());
+    }, []);
 
     if (!isTrained) {
         return <p className={styles.testingPlaceholder}>You must train a model on the left before you can test it here.</p>;
@@ -409,16 +467,6 @@ const MLTrainingPage = ({project, onBack, onUseInBlocks, onUpdateProject}) => {
     const trainCardRef  = useRef(null);
     const testCardRef   = useRef(null);
     const [svgPaths,    setSvgPaths]   = useState([]);
-
-    /* ── Keep trainingAPI ref live (updated every render — no stale closures) ── */
-    trainingAPIRef.current = {
-        addTrainingImage: addImages,
-        startTraining:    trainModel,
-        getStatus:        () => isTraining ? 'training' : isTrained ? 'ready' : 'idle',
-        clearTraining:    () => { setData({}); setTrained(false); },
-        labels,
-        trainingData
-    };
 
     /* ── Push live status updates to the bridge when training state changes ── */
     useEffect(() => {
@@ -544,7 +592,7 @@ const MLTrainingPage = ({project, onBack, onUseInBlocks, onUpdateProject}) => {
         setTraining(true);
         setTrainPct(0);
         setAccPoints([{x: 0, y: 0}]);
-        setStatus('Loading MobileNetV2…');
+        setStatus('Loading MobileNetV1…');
 
         try {
             const net = await getMobileNet(s => setStatus(s));
@@ -576,6 +624,16 @@ const MLTrainingPage = ({project, onBack, onUseInBlocks, onUpdateProject}) => {
         }
     };
 
+    /* ── Keep trainingAPI ref live (updated every render — no stale closures) ── */
+    trainingAPIRef.current = {
+        addTrainingImage: addImages,
+        startTraining:    trainModel,
+        getStatus:        () => isTraining ? 'training' : isTrained ? 'ready' : 'idle',
+        clearTraining:    () => { setData({}); setTrained(false); },
+        labels,
+        trainingData
+    };
+
     /* ── Deploy model to window.__openblockMLModel ── */
     const deployModel = () => {
         setActiveModel({
@@ -599,7 +657,7 @@ const MLTrainingPage = ({project, onBack, onUseInBlocks, onUpdateProject}) => {
             const payload = JSON.stringify({
                 version:     2,
                 type:        'images',
-                backbone:    'mobilenet_v2_100_224',
+                backbone:    'mobilenet_v1_0.25_224',
                 labels,
                 projectName: project.name,
                 savedAt:     new Date().toISOString()
@@ -652,7 +710,7 @@ const MLTrainingPage = ({project, onBack, onUseInBlocks, onUpdateProject}) => {
         const ty2 = testRect.top + testRect.height / 2 - canvasRect.top + scrollTop;
         const tcx = Math.max(40, (tx2 - tx1) / 2);
         paths.push({
-            color: '#6a00b0',
+            color: '#9966FF',
             d: `M ${tx1} ${ty1} C ${tx1 + tcx} ${ty1} ${tx2 - tcx} ${ty2} ${tx2} ${ty2}`
         });
 
