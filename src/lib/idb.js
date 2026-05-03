@@ -1,0 +1,161 @@
+/* ── IndexedDB wrapper ───────────────────────────────────────────
+   Stores:
+     'images'  – key = "{projectId}:{exampleId}"  value = { data: dataUrl }
+     'models'  – key = "knn:{projectId}"          value = serialized JSON string
+   ─────────────────────────────────────────────────────────────── */
+const DB_NAME    = 'openblock_ml_studio';
+const DB_VERSION = 1;
+
+let dbPromise = null;
+
+const getDB = () => {
+    if (dbPromise) return dbPromise;
+    dbPromise = new Promise((resolve, reject) => {
+        const req = indexedDB.open(DB_NAME, DB_VERSION);
+        req.onupgradeneeded = evt => {
+            const db = evt.target.result;
+            ['images', 'models'].forEach(name => {
+                if (!db.objectStoreNames.contains(name)) {
+                    db.createObjectStore(name);
+                }
+            });
+        };
+        req.onsuccess = evt => resolve(evt.target.result);
+        req.onerror  = ()  => { dbPromise = null; reject(req.error); };
+    });
+    return dbPromise;
+};
+
+export const idbGet = async (store, key) => {
+    const db = await getDB();
+    return new Promise((resolve, reject) => {
+        const tx  = db.transaction(store, 'readonly');
+        const req = tx.objectStore(store).get(key);
+        req.onsuccess = () => resolve(req.result);
+        req.onerror   = () => reject(req.error);
+    });
+};
+
+export const idbPut = async (store, key, value) => {
+    const db = await getDB();
+    return new Promise((resolve, reject) => {
+        const tx  = db.transaction(store, 'readwrite');
+        const req = tx.objectStore(store).put(value, key);
+        req.onsuccess = () => resolve();
+        req.onerror   = () => reject(req.error);
+    });
+};
+
+export const idbDelete = async (store, key) => {
+    const db = await getDB();
+    return new Promise((resolve, reject) => {
+        const tx  = db.transaction(store, 'readwrite');
+        const req = tx.objectStore(store).delete(key);
+        req.onsuccess = () => resolve();
+        req.onerror   = () => reject(req.error);
+    });
+};
+
+export const idbGetAllKeys = async (store, prefix) => {
+    const db = await getDB();
+    return new Promise((resolve, reject) => {
+        const tx  = db.transaction(store, 'readonly');
+        const req = tx.objectStore(store).getAllKeys();
+        req.onsuccess = () => resolve(
+            prefix ? req.result.filter(k => String(k).startsWith(prefix)) : req.result
+        );
+        req.onerror = () => reject(req.error);
+    });
+};
+
+/* ── Convenience: save / load / delete all images for a project ── */
+export const saveImageToIDB = async (projectId, id, dataUrl) => {
+    await idbPut('images', `${projectId}:${id}`, { data: dataUrl });
+};
+
+export const getImageFromIDB = async (projectId, id) => {
+    const rec = await idbGet('images', `${projectId}:${id}`);
+    return rec ? rec.data : null;
+};
+
+export const loadProjectImages = async (projectId, trainingData) => {
+    /* Returns a new trainingData object with image .data fields populated from IDB */
+    const out = {};
+    for (const [label, examples] of Object.entries(trainingData || {})) {
+        out[label] = await Promise.all(
+            (examples || []).map(async ex => {
+                if (ex.type !== 'image') return ex;
+                const data = await getImageFromIDB(projectId, ex.id);
+                return { ...ex, data: data || '' };
+            })
+        );
+    }
+    return out;
+};
+
+export const deleteProjectIDB = async (projectId) => {
+    const imageKeys = await idbGetAllKeys('images', `${projectId}:`);
+    for (const k of imageKeys) await idbDelete('images', k);
+    await idbDelete('models', `knn:${projectId}`);
+    await idbDelete('models', `knn:text:${projectId}`);
+    await idbDelete('models', `knn:numbers:${projectId}`);
+    await idbDelete('models', `vocab:${projectId}`);
+};
+
+/* ── KNN serialization helpers ── */
+const serializeKNN = async (classifier) => {
+    const dataset = classifier.getClassifierDataset();
+    const serial  = {};
+    for (const [k, tensor] of Object.entries(dataset)) {
+        serial[k] = { data: Array.from(tensor.dataSync()), shape: tensor.shape };
+    }
+    return JSON.stringify(serial);
+};
+
+const deserializeKNN = (raw, tf, knnLib) => {
+    const serial     = JSON.parse(raw);
+    const classifier = knnLib.create();
+    const dataset    = {};
+    for (const [k, {data, shape}] of Object.entries(serial)) {
+        dataset[k] = tf.tensor(data, shape);
+    }
+    classifier.setClassifierDataset(dataset);
+    return classifier;
+};
+
+/* ── Image KNN model ── */
+export const saveKNNToIDB = async (projectId, classifier, tf) => { // eslint-disable-line no-unused-vars
+    await idbPut('models', `knn:${projectId}`, await serializeKNN(classifier));
+};
+
+export const loadKNNFromIDB = async (projectId, tf, knnLib) => {
+    const raw = await idbGet('models', `knn:${projectId}`);
+    if (!raw) return null;
+    return deserializeKNN(raw, tf, knnLib);
+};
+
+/* ── Text KNN model + vocabulary ── */
+export const saveTextModelToIDB = async (projectId, classifier, vocab) => {
+    await idbPut('models', `knn:text:${projectId}`, await serializeKNN(classifier));
+    await idbPut('models', `vocab:${projectId}`, JSON.stringify(vocab));
+};
+
+export const loadTextModelFromIDB = async (projectId, tf, knnLib) => {
+    const rawKNN   = await idbGet('models', `knn:text:${projectId}`);
+    const rawVocab = await idbGet('models', `vocab:${projectId}`);
+    if (!rawKNN || !rawVocab) return null;
+    const classifier = deserializeKNN(rawKNN, tf, knnLib);
+    const vocab      = JSON.parse(rawVocab);
+    return { classifier, vocab };
+};
+
+/* ── Numbers KNN model ── */
+export const saveNumbersModelToIDB = async (projectId, classifier) => {
+    await idbPut('models', `knn:numbers:${projectId}`, await serializeKNN(classifier));
+};
+
+export const loadNumbersModelFromIDB = async (projectId, tf, knnLib) => {
+    const raw = await idbGet('models', `knn:numbers:${projectId}`);
+    if (!raw) return null;
+    return deserializeKNN(raw, tf, knnLib);
+};

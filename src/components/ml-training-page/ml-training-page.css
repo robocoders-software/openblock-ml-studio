@@ -1,0 +1,868 @@
+/* ── Full-page wrapper ── */
+.page {
+    position: fixed;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+    z-index: 9999;
+    overflow: hidden;
+}
+
+/* ── Top header (dark purple) ── */
+.header {
+    height: 50px;
+    background: #4a0080;
+    display: flex;
+    align-items: center;
+    padding: 0 16px;
+    flex-shrink: 0;
+    color: white;
+    gap: 16px;
+}
+.headerTitle {
+    font-size: 17px;
+    font-weight: 700;
+    flex: 1;
+}
+.headerNav {
+    display: flex;
+    gap: 20px;
+    font-size: 13px;
+    opacity: 0.85;
+    cursor: pointer;
+}
+.headerBackBtn {
+    background: rgba(255,255,255,0.15);
+    border: 1.5px solid rgba(255,255,255,0.5);
+    color: white;
+    border-radius: 20px;
+    padding: 5px 14px;
+    font-size: 13px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+}
+.headerBackBtn:hover { background: rgba(255,255,255,0.25); }
+
+/* ── Sub-header (lavender) ── */
+.subHeader {
+    height: 54px;
+    background: #ede0f8;
+    display: flex;
+    align-items: center;
+    padding: 0 16px;
+    gap: 12px;
+    flex-shrink: 0;
+    border-bottom: 1px solid #d8c0f0;
+}
+.subHeaderIcon {
+    width: 36px;
+    height: 36px;
+    background: #4a0080;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    font-size: 18px;
+    flex-shrink: 0;
+}
+.subHeaderType {
+    font-size: 15px;
+    font-weight: 700;
+    color: #4a0080;
+}
+.infoIcon {
+    background: #4a0080;
+    color: white;
+    border-radius: 50%;
+    width: 18px;
+    height: 18px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    font-weight: 700;
+    cursor: help;
+    flex-shrink: 0;
+}
+.divider {
+    width: 1px;
+    height: 30px;
+    background: #c0a0e0;
+}
+.projectNamePill {
+    background: #7b2fbe;
+    color: white;
+    border-radius: 8px;
+    padding: 5px 14px;
+    font-size: 13px;
+    font-weight: 600;
+}
+.uploadFolderBtn {
+    background: #4a0080;
+    color: white;
+    border: none;
+    border-radius: 20px;
+    padding: 7px 18px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    white-space: nowrap;
+}
+.uploadFolderBtn:hover { background: #6a00c0; }
+.saveBtn {
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: #4a0080;
+    font-size: 20px;
+    padding: 4px 6px;
+    border-radius: 6px;
+}
+.saveBtn:hover { background: #d8c0f0; }
+.spacer { flex: 1; }
+.webcamLabel {
+    font-size: 12px;
+    color: #555;
+    font-weight: 600;
+    white-space: nowrap;
+}
+.webcamSelect {
+    border: 1.5px solid #c0a0e0;
+    border-radius: 8px;
+    padding: 5px 10px;
+    font-size: 12px;
+    color: #333;
+    background: white;
+    cursor: pointer;
+    max-width: 220px;
+}
+
+/* ── Canvas (main area) ── */
+.canvas {
+    flex: 1;
+    background: #ebebeb;
+    overflow: auto;
+    position: relative;
+    display: grid;
+    grid-template-columns: 44% 1fr;
+    align-items: start;
+    padding: 28px 20px 28px 24px;
+    gap: 0;
+}
+
+/* SVG curves overlay */
+.curveSvg {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    z-index: 1;
+    overflow: visible;
+}
+
+/* ── Left: classes column ── */
+.classesColumn {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    position: relative;
+    z-index: 2;
+}
+
+/* ── Class card ── */
+.classCard {
+    background: white;
+    border-radius: 8px;
+    overflow: hidden;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+.classCardHeader {
+    display: flex;
+    align-items: center;
+    padding: 10px 14px;
+    color: white;
+    gap: 8px;
+}
+.classCardTitle {
+    font-size: 15px;
+    font-weight: 700;
+    flex: 1;
+}
+.classCardEditBtn {
+    background: none;
+    border: none;
+    color: rgba(255,255,255,0.85);
+    cursor: pointer;
+    font-size: 14px;
+    padding: 2px 4px;
+    border-radius: 4px;
+}
+.classCardEditBtn:hover { background: rgba(255,255,255,0.2); }
+.classCardMenuBtn {
+    background: none;
+    border: none;
+    color: rgba(255,255,255,0.85);
+    cursor: pointer;
+    font-size: 18px;
+    padding: 2px 4px;
+    border-radius: 4px;
+    position: relative;
+}
+.classCardMenuBtn:hover { background: rgba(255,255,255,0.2); }
+.classCardMenu {
+    position: absolute;
+    right: 0;
+    top: 100%;
+    background: white;
+    border: 1px solid #e0d0f0;
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.14);
+    z-index: 10;
+    min-width: 140px;
+    overflow: hidden;
+}
+.classCardMenu button {
+    display: block;
+    width: 100%;
+    padding: 10px 16px;
+    text-align: left;
+    border: none;
+    background: white;
+    cursor: pointer;
+    font-size: 13px;
+    color: #333;
+}
+.classCardMenu button:hover { background: #f8f0ff; }
+.classCardMenu button.danger { color: #e53935; }
+.classCardMenu button.danger:hover { background: #fff5f5; }
+
+.classCardBody {
+    display: flex;
+    min-height: 140px;
+}
+.classCardLeft {
+    flex: 3;
+    padding: 14px 16px;
+    border-right: 1px solid #f0e8ff;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+.addSamplesLabel {
+    font-size: 12px;
+    font-weight: 700;
+    color: #555;
+    text-align: center;
+}
+.addBtnsRow {
+    display: flex;
+    gap: 12px;
+    justify-content: center;
+}
+.addBtn {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    border: 1.5px dashed #b0a0c0;
+    border-radius: 8px;
+    padding: 12px 16px;
+    cursor: pointer;
+    background: #fafafa;
+    font-size: 12px;
+    color: #666;
+    min-width: 80px;
+    transition: border-color 0.2s, background 0.2s;
+}
+.addBtn:hover { border-color: #7b2fbe; background: #f3e8ff; color: #7b2fbe; }
+.addBtnIcon {
+    width: 28px;
+    height: 28px;
+    opacity: 0.6;
+}
+
+/* Name edit input inline */
+.nameEditInput {
+    font-size: 15px;
+    font-weight: 700;
+    background: rgba(255,255,255,0.2);
+    border: 1.5px solid rgba(255,255,255,0.6);
+    color: white;
+    border-radius: 6px;
+    padding: 2px 8px;
+    flex: 1;
+    outline: none;
+}
+
+.classCardRight {
+    flex: 2;
+    padding: 14px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    min-width: 0;
+}
+.sampleCountLabel {
+    font-size: 12px;
+    color: #888;
+    font-weight: 600;
+}
+.thumbnailGrid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 4px;
+    flex: 1;
+    overflow: hidden;
+}
+.thumb {
+    aspect-ratio: 1;
+    border-radius: 4px;
+    overflow: hidden;
+    background: #eee;
+    position: relative;
+}
+.thumb img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+}
+.thumbMore {
+    position: absolute;
+    inset: 0;
+    background: rgba(0,0,0,0.55);
+    color: white;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    font-weight: 700;
+    border-radius: 4px;
+}
+.thumbDeleteBtn {
+    position: absolute;
+    top: 2px;
+    right: 2px;
+    width: 16px;
+    height: 16px;
+    background: rgba(0,0,0,0.65);
+    color: white;
+    border: none;
+    border-radius: 50%;
+    font-size: 9px;
+    line-height: 1;
+    cursor: pointer;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    z-index: 3;
+}
+.thumb:hover .thumbDeleteBtn { display: flex; }
+
+/* ── Add Class button ── */
+.addClassCard {
+    border: 2px dashed #a080c0;
+    border-radius: 8px;
+    padding: 18px;
+    text-align: center;
+    cursor: pointer;
+    color: #7b2fbe;
+    font-size: 15px;
+    font-weight: 700;
+    background: transparent;
+    transition: background 0.2s;
+    width: 100%;
+}
+.addClassCard:hover { background: rgba(123,47,190,0.06); }
+
+/* ── Right area: Training + Testing ── */
+.rightArea {
+    display: flex;
+    align-items: center;
+    gap: 24px;
+    padding-left: 24px;
+    align-self: center;
+    position: relative;
+    z-index: 2;
+}
+
+/* ── Training card ── */
+.trainingCard {
+    background: white;
+    border-radius: 8px;
+    overflow: hidden;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    min-width: 220px;
+    max-width: 240px;
+}
+.trainingHeader {
+    background: #4a0080;
+    color: white;
+    padding: 10px 14px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 14px;
+    font-weight: 700;
+}
+.langToggle {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    background: rgba(255,255,255,0.15);
+    border-radius: 20px;
+    padding: 3px 8px;
+    font-size: 11px;
+}
+.langToggleSwitch {
+    width: 28px;
+    height: 14px;
+    background: #27ae60;
+    border-radius: 7px;
+    position: relative;
+    cursor: pointer;
+}
+.langToggleSwitch::after {
+    content: '';
+    position: absolute;
+    right: 2px;
+    top: 2px;
+    width: 10px;
+    height: 10px;
+    background: white;
+    border-radius: 50%;
+}
+.trainingBody {
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+.trainModelBtn {
+    background: #4a0080;
+    color: white;
+    border: none;
+    border-radius: 20px;
+    padding: 12px;
+    font-size: 14px;
+    font-weight: 700;
+    cursor: pointer;
+    width: 100%;
+    transition: background 0.2s;
+}
+.trainModelBtn:hover:not(:disabled) { background: #6a00b0; }
+.trainModelBtn:disabled { background: #bbb; cursor: not-allowed; }
+.progressTrack {
+    height: 6px;
+    background: #f0e8ff;
+    border-radius: 3px;
+    overflow: hidden;
+}
+.progressFill {
+    height: 100%;
+    background: linear-gradient(90deg, #27ae60, #2ecc71);
+    border-radius: 3px;
+    transition: width 0.3s;
+}
+.trainStatusText {
+    font-size: 11px;
+    color: #666;
+    text-align: center;
+}
+.trainSuccessText {
+    font-size: 11px;
+    font-weight: 700;
+    color: #27ae60;
+    text-align: center;
+}
+.trainingFooter {
+    border-top: 1px solid #f0e8ff;
+    padding: 10px 14px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    cursor: pointer;
+    color: #7b2fbe;
+    font-size: 13px;
+    font-weight: 600;
+}
+.trainingFooter:hover { background: #faf0ff; }
+
+/* Advanced section */
+.advancedSection {
+    border-top: 1px solid #f0e8ff;
+    padding: 12px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+.advancedRow {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 12px;
+    color: #555;
+}
+.advancedInput {
+    width: 60px;
+    padding: 3px 6px;
+    border: 1px solid #d0c0e8;
+    border-radius: 6px;
+    font-size: 12px;
+    text-align: center;
+}
+
+/* ── Testing card ── */
+.testingCard {
+    background: white;
+    border-radius: 8px;
+    overflow: hidden;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    min-width: 200px;
+    max-width: 240px;
+}
+.testingHeader {
+    background: #4a0080;
+    color: white;
+    padding: 10px 14px;
+    font-size: 14px;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+}
+.testingBody {
+    padding: 16px;
+    min-height: 100px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+.testingPlaceholder {
+    font-size: 13px;
+    color: #999;
+    line-height: 1.5;
+}
+.testVideoWrap {
+    background: #111;
+    border-radius: 8px;
+    overflow: hidden;
+}
+.testVideo {
+    width: 100%;
+    display: block;
+    border-radius: 8px;
+}
+.testCamBtn {
+    background: #4a0080;
+    color: white;
+    border: none;
+    border-radius: 20px;
+    padding: 8px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    width: 100%;
+}
+.testResultBar { margin-bottom: 6px; }
+.testResultLabelRow {
+    display: flex;
+    justify-content: space-between;
+    font-size: 11px;
+    color: #444;
+    margin-bottom: 2px;
+    font-weight: 600;
+}
+.testResultTrack {
+    height: 7px;
+    background: #f0e8ff;
+    border-radius: 4px;
+    overflow: hidden;
+}
+.testResultFill {
+    height: 100%;
+    background: linear-gradient(90deg, #4a0080, #7b2fbe);
+    border-radius: 4px;
+    transition: width 0.3s;
+}
+
+/* ── Use in Blocks button ── */
+.useInBlocksBtn {
+    background: #FF8C1A;
+    border: none;
+    color: white;
+    border-radius: 20px;
+    padding: 9px 20px;
+    font-size: 13px;
+    font-weight: 700;
+    cursor: pointer;
+    width: 100%;
+    margin-top: 4px;
+}
+.useInBlocksBtn:hover:not(:disabled) { background: #e07800; }
+.useInBlocksBtn:disabled { background: #ddd; color: #999; cursor: not-allowed; }
+
+/* ── Webcam capture modal ── */
+.camOverlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.7);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 10010;
+}
+.camModal {
+    background: white;
+    border-radius: 16px;
+    padding: 24px;
+    width: 400px;
+    max-width: 96vw;
+    text-align: center;
+    position: relative;
+}
+.camHeader {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    margin-bottom: 14px;
+}
+.camTitle { font-size: 16px; font-weight: 700; margin: 0; color: #222; flex: 1; text-align: center; }
+.camXBtn {
+    background: none;
+    border: none;
+    color: #888;
+    font-size: 18px;
+    cursor: pointer;
+    padding: 0 2px;
+    line-height: 1;
+    border-radius: 4px;
+    flex-shrink: 0;
+    margin-left: 8px;
+    margin-top: -2px;
+}
+.camXBtn:hover { background: #f0f0f0; color: #333; }
+.camVideo {
+    width: 100%;
+    border-radius: 10px;
+    background: #111;
+    margin-bottom: 12px;
+    display: block;
+}
+.camActions { display: flex; gap: 10px; justify-content: center; }
+.camCaptureBtn {
+    background: #4a0080;
+    border: none;
+    color: white;
+    border-radius: 10px;
+    padding: 10px 22px;
+    font-size: 14px;
+    font-weight: 700;
+    cursor: pointer;
+}
+.camCloseBtn {
+    background: #f0f0f0;
+    border: none;
+    border-radius: 10px;
+    padding: 10px 22px;
+    font-size: 14px;
+    cursor: pointer;
+    color: #555;
+}
+.camCount { font-size: 12px; color: #888; margin: 6px 0 10px; }
+
+/* ── Inline webcam in ClassCard ── */
+.inlineWebcam {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    width: 100%;
+}
+.inlineWebcamHeader {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+.webcamSectionLabel {
+    font-size: 12px;
+    font-weight: 700;
+    color: #555;
+}
+.camBackBtn {
+    background: none;
+    border: none;
+    color: #7b2fbe;
+    font-size: 16px;
+    cursor: pointer;
+    padding: 2px 6px;
+    border-radius: 4px;
+    line-height: 1;
+}
+.camBackBtn:hover { background: #f0e8ff; }
+.inlineVideo {
+    width: 100%;
+    border-radius: 8px;
+    background: #111;
+    display: block;
+    max-height: 140px;
+    object-fit: cover;
+}
+.holdRow {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+}
+.holdBtn {
+    flex: 1;
+    background: #4a0080;
+    color: white;
+    border: none;
+    border-radius: 20px;
+    padding: 9px 10px;
+    font-size: 12px;
+    font-weight: 700;
+    cursor: pointer;
+    user-select: none;
+    -webkit-user-select: none;
+    transition: background 0.15s;
+}
+.holdBtn:hover:not(:disabled) { background: #6a00b0; }
+.holdBtn:active:not(:disabled) { background: #9b00ff; }
+.holdBtn:disabled { background: #bbb; cursor: not-allowed; }
+.gearBtn {
+    background: none;
+    border: 1.5px solid #d0c0e8;
+    color: #7b2fbe;
+    border-radius: 6px;
+    width: 30px;
+    height: 30px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+    cursor: pointer;
+    flex-shrink: 0;
+}
+.gearBtn:hover { background: #f0e8ff; }
+
+/* ── Accuracy chart ── */
+.chartWrap {
+    background: #fafafe;
+    border: 1px solid #e8daf5;
+    border-radius: 8px;
+    padding: 8px 4px 4px;
+    overflow: hidden;
+}
+
+/* ── Training Completed state ── */
+.trainCompletedText {
+    font-size: 12px;
+    font-weight: 700;
+    color: #27ae60;
+    text-align: center;
+}
+.trainAgainBtn {
+    background: transparent;
+    color: #4a0080;
+    border: 2px solid #4a0080;
+    border-radius: 20px;
+    padding: 9px 12px;
+    font-size: 13px;
+    font-weight: 700;
+    cursor: pointer;
+    width: 100%;
+    transition: background 0.2s, color 0.2s;
+}
+.trainAgainBtn:hover:not(:disabled) { background: #4a0080; color: white; }
+.trainAgainBtn:disabled { border-color: #bbb; color: #bbb; cursor: not-allowed; }
+
+/* ── Advanced section buttons ── */
+.advancedBtnsRow {
+    display: flex;
+    gap: 8px;
+    margin-top: 4px;
+}
+.trainReportBtn {
+    flex: 1;
+    background: #ede0f8;
+    color: #4a0080;
+    border: none;
+    border-radius: 8px;
+    padding: 7px 8px;
+    font-size: 11px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: background 0.15s;
+}
+.trainReportBtn:hover { background: #d8c0f0; }
+.resetBtn {
+    flex: 1;
+    background: #fff0f0;
+    color: #c0392b;
+    border: none;
+    border-radius: 8px;
+    padding: 7px 8px;
+    font-size: 11px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: background 0.15s;
+}
+.resetBtn:hover { background: #ffd8d8; }
+
+/* ── Testing panel content ── */
+.testPanelContent {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    width: 100%;
+}
+.testByLabel {
+    font-size: 12px;
+    font-weight: 700;
+    color: #555;
+    text-align: center;
+}
+.testOptionRow {
+    display: flex;
+    gap: 10px;
+    justify-content: center;
+}
+.testOptionBtn {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    border: 1.5px solid #c0a0e0;
+    border-radius: 8px;
+    padding: 10px 14px;
+    cursor: pointer;
+    background: #fafafa;
+    font-size: 11px;
+    font-weight: 600;
+    color: #555;
+    min-width: 64px;
+    transition: border-color 0.15s, background 0.15s, color 0.15s;
+}
+.testOptionBtn:hover { border-color: #7b2fbe; background: #f3e8ff; color: #7b2fbe; }
+
+/* ── Export Model button (in testing header) ── */
+.exportModelBtn {
+    background: rgba(255,255,255,0.18);
+    border: 1.5px solid rgba(255,255,255,0.6);
+    color: white;
+    border-radius: 14px;
+    padding: 4px 10px;
+    font-size: 11px;
+    font-weight: 700;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background 0.15s;
+}
+.exportModelBtn:hover { background: rgba(255,255,255,0.32); }
