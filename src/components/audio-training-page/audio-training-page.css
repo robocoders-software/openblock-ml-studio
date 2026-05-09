@@ -338,9 +338,55 @@
 .camBackBtn:hover { background: #F0E8FF; }
 
 .liveWaveform {
-    width: 100%; height: 110px;
-    border-radius: 6px; background: #000;
+    width: 100%; height: 130px;
+    border-radius: 6px; background: #111;
     display: block;
+}
+
+/* ── Noise level meter + recording timer row ── */
+.recInfoRow {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-height: 18px;
+}
+.noiseMeter {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex: 1;
+    min-width: 0;
+}
+.noiseMeterLabel {
+    font-size: 9px;
+    font-weight: 800;
+    color: #777;
+    white-space: nowrap;
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    flex-shrink: 0;
+}
+.noiseMeterTrack {
+    flex: 1;
+    height: 5px;
+    background: rgba(255,255,255,0.08);
+    border-radius: 3px;
+    overflow: hidden;
+}
+.noiseMeterFill {
+    height: 100%;
+    border-radius: 3px;
+    transition: width 0.04s linear, background 0.25s;
+    min-width: 2px;
+}
+.recTimer {
+    font-size: 11px;
+    font-weight: 800;
+    color: #e53935;
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+    flex-shrink: 0;
+    letter-spacing: 0.5px;
 }
 
 .holdBtn {
@@ -443,6 +489,31 @@
     width: 100%; height: 100%;
     object-fit: fill; display: block;
 }
+.thumbPlayBtn {
+    position: absolute;
+    bottom: 2px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 18px;
+    height: 18px;
+    background: rgba(0,0,0,0.72);
+    color: white;
+    border: none;
+    border-radius: 50%;
+    font-size: 7px;
+    line-height: 1;
+    cursor: pointer;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    z-index: 3;
+    transition: background 0.15s;
+}
+.thumb:hover .thumbPlayBtn    { display: flex; }
+.thumbActive .thumbPlayBtn    { display: flex; background: rgba(229,57,53,0.85); }
+.thumbActive                  { outline: 2px solid #e53935; outline-offset: -2px; }
+
 .thumbMore {
     position: absolute; inset: 0; background: rgba(0,0,0,0.55);
     color: white; display: flex; align-items: center;
@@ -458,6 +529,19 @@
     padding: 0; z-index: 3;
 }
 .thumb:hover .thumbDeleteBtn { display: flex; }
+
+.thumbExportBtn {
+    position: absolute; top: 2px; left: 2px;
+    width: 16px; height: 16px;
+    background: rgba(0,0,0,0.7); color: white;
+    border: none; border-radius: 50%; font-size: 10px;
+    line-height: 1; cursor: pointer;
+    display: none; align-items: center; justify-content: center;
+    padding: 0; z-index: 3;
+    transition: background 0.15s;
+}
+.thumbExportBtn:hover { background: rgba(153,102,255,0.85); }
+.thumb:hover .thumbExportBtn { display: flex; }
 
 /* ── Add Class button ── */
 .addClassCard {
@@ -517,13 +601,16 @@
 .trainModelBtn:disabled { background: #C8A8F0; cursor: not-allowed; box-shadow: none; }
 
 .trainAgainBtn {
-    background: transparent; color: #9966FF;
-    border: 2px solid #9966FF; border-radius: 20px;
-    padding: 9px 12px; font-size: 13px; font-weight: 700;
-    cursor: pointer; width: 100%; transition: background 0.2s, color 0.2s;
+    background: linear-gradient(135deg, #9966FF 0%, #7744dd 100%);
+    color: white; border: none;
+    border-radius: 24px; padding: 11px 16px;
+    font-size: 13px; font-weight: 700;
+    cursor: pointer; width: 100%;
+    transition: opacity 0.2s, box-shadow 0.2s;
+    box-shadow: 0 3px 10px rgba(153,102,255,0.4);
 }
-.trainAgainBtn:hover:not(:disabled) { background: #9966FF; color: white; }
-.trainAgainBtn:disabled { border-color: #C8A8F0; color: #C8A8F0; cursor: not-allowed; }
+.trainAgainBtn:hover:not(:disabled) { opacity: 0.9; box-shadow: 0 5px 14px rgba(153,102,255,0.5); }
+.trainAgainBtn:disabled { background: #C8A8F0; cursor: not-allowed; box-shadow: none; }
 
 .progressTrack { height: 6px; background: #F0E8FF; border-radius: 3px; overflow: hidden; }
 .progressFill {
@@ -629,7 +716,21 @@
 .testOptionBtnActive       { border-color: #e53935; background: #fff5f5; color: #e53935; }
 .testOptionBtnActive:hover { border-color: #e53935; background: #fff0f0; color: #e53935; }
 
-.testResultBar      { margin-bottom: 6px; }
-.testResultLabelRow { display: flex; justify-content: space-between; font-size: 11px; color: #444; margin-bottom: 2px; font-weight: 600; }
-.testResultTrack    { height: 7px; background: #F0E8FF; border-radius: 4px; overflow: hidden; }
-.testResultFill     { height: 100%; background: linear-gradient(90deg, #9966FF, #774DCB); border-radius: 4px; transition: width 0.3s; }
+.testMicHeader {
+    display: flex; align-items: center;
+    justify-content: space-between; margin-bottom: 4px;
+}
+
+.testLiveWaveform {
+    width: 100%; height: 130px;
+    border-radius: 6px; background: #1a0a2e;
+    display: block;
+}
+
+.testOutputSection { display: flex; flex-direction: column; gap: 6px; margin-top: 4px; }
+.testOutputLabel   { font-size: 11px; font-weight: 700; color: #888; margin: 0; text-transform: uppercase; letter-spacing: 0.5px; }
+
+.testResultBar      { margin-bottom: 4px; }
+.testResultLabelRow { display: flex; justify-content: space-between; font-size: 11px; color: #444; margin-bottom: 3px; font-weight: 600; }
+.testResultTrack    { height: 8px; background: #F0E8FF; border-radius: 4px; overflow: hidden; }
+.testResultFill     { height: 100%; border-radius: 4px; transition: width 0.25s; }

@@ -18,12 +18,53 @@ import {
     saveAudioToIDB,
     saveAudioThumbToIDB,
     getAudioThumbFromIDB,
-    loadProjectAudio
+    loadProjectAudio,
+    saveAudioBlobToIDB,
+    getAudioBlobFromIDB,
+    deleteAudioBlobFromIDB
 } from '../../lib/idb.js';
+import {WaveformRenderer} from './waveform-renderer.js';
+import {computeRMS, blobToWavBlob} from '../../lib/audio-utils.js';
 
 const CLASS_COLORS = ['#E05C3D', '#2EAA7E', '#9966FF', '#774DCB', '#F39C12', '#E91E63', '#1ABC9C', '#E67E22'];
 const MAX_THUMBS   = 9;
 const generateId   = () => Math.random().toString(36).slice(2, 10);
+
+/* Render spectrogram data as a colored waveform thumbnail (bar-chart of RMS per frame).
+   Normalises to the loudest frame so quiet recordings still show a visible waveform. */
+const renderSpectrumThumb = (spectrogramData, frameSize, color) => {
+    const W = 200, H = 80;
+    const canvas = document.createElement('canvas');
+    canvas.width = W;
+    canvas.height = H;
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#111';
+    ctx.fillRect(0, 0, W, H);
+    const data      = spectrogramData instanceof Float32Array ? spectrogramData : new Float32Array(spectrogramData);
+    const numFrames = frameSize > 0 ? Math.floor(data.length / frameSize) : 0;
+    if (numFrames === 0) return canvas.toDataURL('image/png');
+
+    /* Compute RMS per frame */
+    const rmsValues = new Float32Array(numFrames);
+    for (let f = 0; f < numFrames; f++) {
+        let sum = 0;
+        const off = f * frameSize;
+        for (let i = 0; i < frameSize; i++) sum += data[off + i] ** 2;
+        rmsValues[f] = Math.sqrt(sum / frameSize);
+    }
+
+    /* Normalise so the loudest frame fills 90% of height */
+    const maxRms = Math.max(...rmsValues, 1e-6);
+    const midY   = H / 2;
+    const barW   = W / numFrames;
+
+    ctx.fillStyle = color;
+    for (let f = 0; f < numFrames; f++) {
+        const barH = Math.max(2, (rmsValues[f] / maxRms) * H * 0.9);
+        ctx.fillRect(f * barW, midY - barH / 2, Math.max(1, barW - 0.5), barH);
+    }
+    return canvas.toDataURL('image/png');
+};
 
 /* ── Accuracy vs Epochs SVG chart ── */
 const AccuracyChart = ({points}) => {
@@ -73,14 +114,22 @@ const AudioClassCard = React.forwardRef(({
     const [isRecording,   setRecording] = useState(false);
     const [thumbData,     setThumbData] = useState([]);
     const [micError,      setMicError]  = useState('');
+    const noiseFillRef  = useRef(null);  // direct DOM ref — avoids re-renders for meter
+    const [recTime,       setRecTime]   = useState(0);    // seconds elapsed
+    const [playingId,     setPlayingId] = useState(null); // sample id being played
+    const playingIdRef    = useRef(null);                 // mirrors playingId without closure capture
 
-    const liveCanvasRef  = useRef(null);
-    const analyserRef    = useRef(null);
-    const vizStreamRef   = useRef(null);
-    const animFrameRef   = useRef(null);
-    const isHoldingRef   = useRef(false);
-    const isRecordingRef = useRef(false);
-    const menuRef        = useRef(null);
+    const liveCanvasRef    = useRef(null);
+    const analyserRef      = useRef(null);
+    const vizStreamRef     = useRef(null);
+    const animFrameRef     = useRef(null);
+    const isHoldingRef     = useRef(false);
+    const isRecordingRef   = useRef(false);
+    const menuRef          = useRef(null);
+    const rendererRef      = useRef(null);
+    const recTimerRef      = useRef(null);
+    const mediaRecorderRef = useRef(null);
+    const playingAudioRef  = useRef(null);
 
     /* Close menu when clicking outside */
     useEffect(() => {
@@ -114,12 +163,16 @@ const AudioClassCard = React.forwardRef(({
     useEffect(() => {
         if (!isMicActive && vizStreamRef.current) {
             isHoldingRef.current = false;
+            clearInterval(recTimerRef.current);
             if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
             vizStreamRef.current.getTracks().forEach(t => t.stop());
-            vizStreamRef.current = null;
-            analyserRef.current  = null;
+            vizStreamRef.current   = null;
+            analyserRef.current    = null;
+            rendererRef.current    = null;
             setShowMic(false);
             setRecording(false);
+            if (noiseFillRef.current) { noiseFillRef.current.style.width = '0%'; }
+            setRecTime(0);
             setMicError('');
         }
     }, [isMicActive]);
@@ -139,7 +192,6 @@ const AudioClassCard = React.forwardRef(({
     const startMic = async () => {
         onRequestMic();
         setMicError('');
-        setShowMic(true);
         try {
             const constraints = {
                 audio: selectedMicId ? {deviceId: {exact: selectedMicId}} : true,
@@ -150,75 +202,123 @@ const AudioClassCard = React.forwardRef(({
             const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
             const source   = audioCtx.createMediaStreamSource(stream);
             const analyser = audioCtx.createAnalyser();
-            analyser.fftSize = 256;
+            analyser.fftSize = 1024; // more sample points → denser, richer waveform
             source.connect(analyser);
             analyserRef.current = analyser;
+            // Set showMic AFTER analyser is ready so the useEffect sees it immediately.
+            setShowMic(true);
         } catch (e) {
             const {title, msg} = friendlyMicError(e);
             setMicError(`${title}|||${msg}`);
+            setShowMic(true); // show error UI
             onReleaseMic();
         }
     };
 
     const stopMic = () => {
         isHoldingRef.current = false;
+        clearInterval(recTimerRef.current);
+        if (playingAudioRef.current) {
+            playingAudioRef.current.pause();
+            if (playingAudioRef.current._revokeUrl) URL.revokeObjectURL(playingAudioRef.current._revokeUrl);
+            playingAudioRef.current = null;
+        }
         if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
         if (vizStreamRef.current) vizStreamRef.current.getTracks().forEach(t => t.stop());
-        vizStreamRef.current = null;
-        analyserRef.current  = null;
+        vizStreamRef.current  = null;
+        analyserRef.current   = null;
+        rendererRef.current   = null;
+        playingIdRef.current  = null;
         setShowMic(false);
         setRecording(false);
+        if (noiseFillRef.current) { noiseFillRef.current.style.width = '0%'; }
+        setRecTime(0);
+        setPlayingId(null);
         setMicError('');
         onReleaseMic();
     };
 
-    /* Live waveform animation */
+    /* Live waveform — DAW-style scrolling min/max ring-buffer (WaveformRenderer) */
     useEffect(() => {
         if (!showMic || !analyserRef.current) return;
+        const canvas = liveCanvasRef.current;
+        if (!canvas) return;
+
         const analyser = analyserRef.current;
-        const buf      = new Uint8Array(analyser.frequencyBinCount);
+        const renderer = new WaveformRenderer(canvas, {color, bgColor: '#111'});
+        rendererRef.current = renderer;
+
+        const buf  = new Float32Array(analyser.fftSize);
         const draw = () => {
             animFrameRef.current = requestAnimationFrame(draw);
-            const canvas = liveCanvasRef.current;
-            if (!canvas) return;
-            const ctx = canvas.getContext('2d');
-            analyser.getByteTimeDomainData(buf);
-            ctx.fillStyle = '#000';
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
-            ctx.strokeStyle = color;
-            ctx.lineWidth   = 2;
-            ctx.beginPath();
-            const sliceW = canvas.width / buf.length;
-            let x = 0;
-            for (let i = 0; i < buf.length; i++) {
-                const v = buf[i] / 128.0;
-                const y = (v * canvas.height) / 2;
-                if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
-                x += sliceW;
+            if (!analyserRef.current) return;
+            analyserRef.current.getFloatTimeDomainData(buf);
+            renderer.push(buf);
+            renderer.draw();
+            /* Update noise meter directly on the DOM element — no React re-renders */
+            if (noiseFillRef.current) {
+                const rms = computeRMS(buf);
+                noiseFillRef.current.style.width = `${Math.min(100, rms * 400)}%`;
+                noiseFillRef.current.style.background =
+                    rms > 0.25 ? '#e53935' : rms > 0.08 ? '#F39C12' : '#4caf50';
             }
-            ctx.stroke();
         };
         draw();
-        return () => { if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current); };
+
+        return () => {
+            if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
+            rendererRef.current = null;
+        };
     }, [showMic, color]);
 
     /* Cleanup on unmount */
     useEffect(() => () => stopMic(), []); // eslint-disable-line react-hooks/exhaustive-deps
 
-    /* Record one sample, loop while button held */
+    /* Record one sample; also captures raw audio blob for playback / WAV export */
     const doRecord = useCallback(async () => {
         if (!isHoldingRef.current || isRecordingRef.current) return;
         isRecordingRef.current = true;
         setRecording(true);
+
+        /* Recording timer */
+        const start = Date.now();
+        recTimerRef.current = setInterval(
+            () => setRecTime(Math.floor((Date.now() - start) / 1000)),
+            200
+        );
+
+        /* MediaRecorder — capture raw audio alongside the spectrogram */
+        const chunks = [];
+        let mr = null;
+        if (vizStreamRef.current) {
+            try {
+                mr = new MediaRecorder(vizStreamRef.current);
+                mr.ondataavailable = e => { if (e.data && e.data.size > 0) chunks.push(e.data); };
+                mr.start();
+                mediaRecorderRef.current = mr;
+            } catch (_) { mr = null; }
+        }
+
         try {
             const specData = await collectAudioExample(label);
-            /* Snapshot the live canvas as the waveform thumbnail */
-            const thumbUrl = liveCanvasRef.current
-                ? liveCanvasRef.current.toDataURL('image/png')
-                : null;
+
+            /* Stop MediaRecorder and collect blob */
+            let mediaBlob = null;
+            if (mr && mr.state !== 'inactive') {
+                mediaBlob = await new Promise(resolve => {
+                    mr.addEventListener('stop', () => {
+                        resolve(chunks.length ? new Blob(chunks, {type: mr.mimeType}) : null);
+                    }, {once: true});
+                    mr.stop();
+                });
+            }
+            mediaRecorderRef.current = null;
+
+            const thumbUrl = renderSpectrumThumb(specData.data, specData.frameSize, color);
             const id = generateId();
             await saveAudioToIDB(projectId, id, Array.from(specData.data), specData.frameSize);
             if (thumbUrl) await saveAudioThumbToIDB(projectId, id, thumbUrl);
+            if (mediaBlob) await saveAudioBlobToIDB(projectId, id, mediaBlob);
             onRecorded(label, {
                 id,
                 type: 'audio',
@@ -228,10 +328,58 @@ const AudioClassCard = React.forwardRef(({
         } catch (err) {
             console.error('[AudioCard] recording error:', err);
         }
+
+        clearInterval(recTimerRef.current);
+        setRecTime(0);
         isRecordingRef.current = false;
         setRecording(false);
-        if (isHoldingRef.current) doRecord(); // continue while holding
-    }, [label, projectId, onRecorded]); // eslint-disable-line react-hooks/exhaustive-deps
+        if (isHoldingRef.current) doRecord();
+    }, [label, projectId, color, onRecorded]); // eslint-disable-line react-hooks/exhaustive-deps
+
+    /* Play (or stop) the raw audio blob for a recorded sample.
+       Uses playingIdRef so the callback is stable (no playingId dep). */
+    const playAudio = useCallback(async sampleId => {
+        if (playingAudioRef.current) {
+            playingAudioRef.current.pause();
+            if (playingAudioRef.current._revokeUrl) {
+                URL.revokeObjectURL(playingAudioRef.current._revokeUrl);
+            }
+            playingAudioRef.current = null;
+            const wasPlaying = playingIdRef.current;
+            playingIdRef.current = null;
+            setPlayingId(null);
+            if (wasPlaying === sampleId) return;
+        }
+        const blob = await getAudioBlobFromIDB(projectId, sampleId);
+        if (!blob) return; // sample pre-dates blob capture — silently skip
+        const url   = URL.createObjectURL(blob);
+        const audio = new Audio(url);
+        audio._revokeUrl    = url;
+        playingAudioRef.current = audio;
+        playingIdRef.current    = sampleId;
+        setPlayingId(sampleId);
+        audio.play().catch(() => {});
+        audio.onended = () => {
+            URL.revokeObjectURL(url);
+            playingAudioRef.current = null;
+            playingIdRef.current    = null;
+            setPlayingId(null);
+        };
+    }, [projectId]);
+
+    /* Export a single sample as WAV */
+    const exportWAV = useCallback(async (sampleId) => {
+        const blob = await getAudioBlobFromIDB(projectId, sampleId);
+        if (!blob) return;
+        const wavBlob = await blobToWavBlob(blob);
+        if (!wavBlob) return;
+        const url = URL.createObjectURL(wavBlob);
+        const a   = document.createElement('a');
+        a.href     = url;
+        a.download = `sample_${sampleId}.wav`;
+        a.click();
+        URL.revokeObjectURL(url);
+    }, [projectId]);
 
     const startHold = useCallback(e => {
         e.preventDefault();
@@ -332,7 +480,20 @@ const AudioClassCard = React.forwardRef(({
                                 );
                             })() : (
                                 <>
-                                    <canvas ref={liveCanvasRef} className={styles.liveWaveform} width={200} height={110}/>
+                                    <canvas ref={liveCanvasRef} className={styles.liveWaveform} width={200} height={130}/>
+                                    <div className={styles.recInfoRow}>
+                                        <div className={styles.noiseMeter}>
+                                            <span className={styles.noiseMeterLabel}>Level</span>
+                                            <div className={styles.noiseMeterTrack}>
+                                                <div ref={noiseFillRef} className={styles.noiseMeterFill} style={{width: '0%', background: '#4caf50'}}/>
+                                            </div>
+                                        </div>
+                                        {isRecording && (
+                                            <span className={styles.recTimer}>
+                                                {`● ${String(Math.floor(recTime / 60)).padStart(2, '0')}:${String(recTime % 60).padStart(2, '0')}`}
+                                            </span>
+                                        )}
+                                    </div>
                                     <button
                                         className={`${styles.holdBtn}${isRecording ? ` ${styles.holdBtnRecording}` : ''}`}
                                         onMouseDown={startHold}
@@ -342,7 +503,7 @@ const AudioClassCard = React.forwardRef(({
                                         onTouchEnd={endHold}
                                         disabled={!isEngineReady}
                                     >
-                                        {isRecording ? '● Recording…' : 'Hold to record'}
+                                        {isRecording ? 'Release to Save' : 'Hold to Record'}
                                     </button>
                                 </>
                             )}
@@ -368,13 +529,24 @@ const AudioClassCard = React.forwardRef(({
                     <p className={styles.sampleCountLabel}>{samples.length} Audio Sample{samples.length !== 1 ? 's' : ''}</p>
                     {thumbData.length > 0 && (
                         <div className={styles.thumbnailGrid}>
-                            {thumbData.map((item) => (
-                                <div key={item.id} className={styles.thumb}>
+                            {thumbData.map(item => (
+                                <div key={item.id}
+                                    className={`${styles.thumb}${playingId === item.id ? ` ${styles.thumbActive}` : ''}`}>
                                     <img src={item.src} alt="" className={styles.waveThumb}/>
+                                    <button
+                                        className={styles.thumbPlayBtn}
+                                        onClick={e => { e.stopPropagation(); playAudio(item.id); }}
+                                        title={playingId === item.id ? 'Stop' : 'Play'}>
+                                        {playingId === item.id ? '■' : '▶'}
+                                    </button>
                                     <button
                                         className={styles.thumbDeleteBtn}
                                         onClick={e => { e.stopPropagation(); onDeleteSample(label, item.id); }}
                                         title="Remove">&#10005;</button>
+                                    <button
+                                        className={styles.thumbExportBtn}
+                                        onClick={e => { e.stopPropagation(); exportWAV(item.id); }}
+                                        title="Export WAV">&#8659;</button>
                                 </div>
                             ))}
                         </div>
@@ -409,20 +581,86 @@ AudioClassCard.propTypes = {
 };
 
 /* ── Audio Testing Panel ── */
-const AudioTestingPanel = ({isTrained}) => {
+const AudioTestingPanel = ({isTrained, labels, labelColorMap}) => {
     const [isListening, setListening] = useState(false);
     const [results,     setResults]   = useState([]);
     const [listenErr,   setListenErr] = useState('');
+
+    const testCanvasRef    = useRef(null);
+    const testAnalyserRef  = useRef(null);
+    const testStreamRef    = useRef(null);
+    const testAnimRef      = useRef(null);
+    const testRendererRef  = useRef(null);
+    const testNoiseFillRef = useRef(null);
+
+    /* Canvas is only in the DOM when isListening=true, so init renderer inside
+       a useEffect that fires after the canvas mounts. */
+    useEffect(() => {
+        if (!isListening || !testCanvasRef.current || !testAnalyserRef.current) return;
+
+        const analyser = testAnalyserRef.current;
+        const renderer = new WaveformRenderer(testCanvasRef.current, {
+            color:   '#9966FF',
+            bgColor: '#1a0a2e'
+        });
+        testRendererRef.current = renderer;
+
+        const buf = new Float32Array(analyser.fftSize);
+        const draw = () => {
+            testAnimRef.current = requestAnimationFrame(draw);
+            if (!testAnalyserRef.current) return;
+            testAnalyserRef.current.getFloatTimeDomainData(buf);
+            renderer.push(buf);
+            renderer.draw();
+            if (testNoiseFillRef.current) {
+                const rms = computeRMS(buf);
+                testNoiseFillRef.current.style.width = `${Math.min(100, rms * 400)}%`;
+                testNoiseFillRef.current.style.background =
+                    rms > 0.25 ? '#e53935' : rms > 0.08 ? '#F39C12' : '#4caf50';
+            }
+        };
+        draw();
+
+        return () => {
+            if (testAnimRef.current) cancelAnimationFrame(testAnimRef.current);
+            testRendererRef.current = null;
+        };
+    }, [isListening]);
+
+    const startTestViz = async () => {
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({audio: true, video: false});
+            testStreamRef.current = stream;
+            const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            const source   = audioCtx.createMediaStreamSource(stream);
+            const analyser = audioCtx.createAnalyser();
+            analyser.fftSize = 1024;
+            source.connect(analyser);
+            testAnalyserRef.current = analyser;
+            /* Renderer is started by useEffect([isListening]) once canvas mounts */
+        } catch (_) { /* visualization is optional */ }
+    };
+
+    const stopTestViz = () => {
+        if (testAnimRef.current) cancelAnimationFrame(testAnimRef.current);
+        if (testStreamRef.current) testStreamRef.current.getTracks().forEach(t => t.stop());
+        testStreamRef.current   = null;
+        testAnalyserRef.current = null;
+        testRendererRef.current = null;
+        if (testNoiseFillRef.current) testNoiseFillRef.current.style.width = '0%';
+    };
 
     const toggle = async () => {
         if (isListening) {
             setListening(false);
             setResults([]);
+            stopTestViz();
             await stopListening();
         } else {
             setListenErr('');
             try {
                 await startListening(matches => setResults(matches));
+                await startTestViz();
                 setListening(true);
             } catch (e) {
                 setListenErr(e.message || 'Could not start listening');
@@ -430,7 +668,7 @@ const AudioTestingPanel = ({isTrained}) => {
         }
     };
 
-    useEffect(() => () => { stopListening(); }, []);
+    useEffect(() => () => { stopTestViz(); stopListening(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
     if (!isTrained) {
         return <p className={styles.testingPlaceholder}>Train a model first, then test it here.</p>;
@@ -438,37 +676,70 @@ const AudioTestingPanel = ({isTrained}) => {
 
     return (
         <div className={styles.testPanelContent}>
-            {!isListening && <p className={styles.testByLabel}>Test Audio By</p>}
-            <div className={styles.testOptionRow}>
-                <button
-                    className={`${styles.testOptionBtn}${isListening ? ` ${styles.testOptionBtnActive}` : ''}`}
-                    onClick={toggle}
-                >
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" width="26" height="26">
-                        <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
-                        <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
-                        <line x1="12" y1="19" x2="12" y2="23"/>
-                        <line x1="8" y1="23" x2="16" y2="23"/>
-                    </svg>
-                    {isListening ? 'Stop' : 'Microphone'}
-                </button>
-            </div>
+            {isListening ? (
+                <>
+                    <div className={styles.testMicHeader}>
+                        <span className={styles.micLabel}>Microphone</span>
+                        <button className={styles.camBackBtn} onClick={toggle} title="Stop">&#8592;</button>
+                    </div>
+                    <canvas ref={testCanvasRef} className={styles.testLiveWaveform} width={200} height={130}/>
+                    <div className={styles.recInfoRow}>
+                        <div className={styles.noiseMeter}>
+                            <span className={styles.noiseMeterLabel}>Level</span>
+                            <div className={styles.noiseMeterTrack}>
+                                <div ref={testNoiseFillRef} className={styles.noiseMeterFill} style={{width: '0%', background: '#4caf50'}}/>
+                            </div>
+                        </div>
+                    </div>
+                    {results.length > 0 && (
+                        <div className={styles.testOutputSection}>
+                            <p className={styles.testOutputLabel}>Output</p>
+                            {/* Render in fixed label order so rows never swap positions */}
+                            {labels.map(lbl => {
+                                const r     = results.find(x => x.label === lbl);
+                                const prob  = r ? (r.prob || 0) : 0;
+                                const color = (labelColorMap && labelColorMap[lbl]) || '#9966FF';
+                                return (
+                                    <div key={lbl} className={styles.testResultBar}>
+                                        <div className={styles.testResultLabelRow}>
+                                            <span>{lbl}</span>
+                                            <span>{Math.round(prob)}%</span>
+                                        </div>
+                                        <div className={styles.testResultTrack}>
+                                            <div className={styles.testResultFill}
+                                                style={{width: `${prob}%`, background: color}}/>
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    )}
+                </>
+            ) : (
+                <>
+                    <p className={styles.testByLabel}>Test Audio By</p>
+                    <div className={styles.testOptionRow}>
+                        <button className={styles.testOptionBtn} onClick={toggle}>
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" width="26" height="26">
+                                <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
+                                <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+                                <line x1="12" y1="19" x2="12" y2="23"/>
+                                <line x1="8" y1="23" x2="16" y2="23"/>
+                            </svg>
+                            Microphone
+                        </button>
+                    </div>
+                </>
+            )}
             {listenErr && <p style={{color: '#e53935', fontSize: 11}}>{listenErr}</p>}
-            {results.map(r => (
-                <div key={r.label} className={styles.testResultBar}>
-                    <div className={styles.testResultLabelRow}>
-                        <span>{r.label}</span>
-                        <span>{(r.prob || 0).toFixed(1)}%</span>
-                    </div>
-                    <div className={styles.testResultTrack}>
-                        <div className={styles.testResultFill} style={{width: `${r.prob || 0}%`}}/>
-                    </div>
-                </div>
-            ))}
         </div>
     );
 };
-AudioTestingPanel.propTypes = {isTrained: PropTypes.bool.isRequired};
+AudioTestingPanel.propTypes = {
+    isTrained:     PropTypes.bool.isRequired,
+    labels:        PropTypes.array.isRequired,
+    labelColorMap: PropTypes.object.isRequired
+};
 
 /* ── Main Audio Training Page ── */
 const AudioTrainingPage = ({project, onBack, onUseInBlocks, onUpdateProject, onNewProject, onNewMLProject, onOpenMLProject}) => {
@@ -566,12 +837,17 @@ const AudioTrainingPage = ({project, onBack, onUseInBlocks, onUpdateProject, onN
     const deleteSample = useCallback((label, sampleId) => {
         setData(d => ({...d, [label]: (d[label] || []).filter(s => s.id !== sampleId)}));
         setTrained(false);
-    }, []);
+        deleteAudioBlobFromIDB(project.id, sampleId).catch(() => {});
+    }, [project.id]);
 
     const deleteAllSamples = useCallback(label => {
-        setData(d => ({...d, [label]: []}));
+        setData(d => {
+            const samples = d[label] || [];
+            samples.forEach(s => deleteAudioBlobFromIDB(project.id, s.id).catch(() => {}));
+            return {...d, [label]: []};
+        });
         setTrained(false);
-    }, []);
+    }, [project.id]);
 
     const [disabledLabels, setDisabledLabels] = useState([]);
     const toggleDisableClass = useCallback(label => {
@@ -609,7 +885,6 @@ const AudioTrainingPage = ({project, onBack, onUseInBlocks, onUpdateProject, onN
     /* Train */
     const trainModel = async () => {
         const activeTrainLabels = labels.filter(l => !disabledLabels.includes(l));
-        const total = activeTrainLabels.reduce((s, l) => s + (trainingData[l] || []).length, 0);
         if (activeTrainLabels.length < 2 || !activeTrainLabels.every(l => (trainingData[l] || []).length >= 10)) {
             setStatus('Need at least 2 enabled classes, each with at least 10 audio samples.');
             return;
@@ -889,7 +1164,13 @@ const AudioTrainingPage = ({project, onBack, onUseInBlocks, onUpdateProject, onN
                             )}
                         </div>
                         <div className={styles.testingBody}>
-                            <AudioTestingPanel isTrained={isTrained}/>
+                            <AudioTestingPanel
+                                isTrained={isTrained}
+                                labels={labels}
+                                labelColorMap={Object.fromEntries(
+                                    labels.map((l, i) => [l, CLASS_COLORS[i % CLASS_COLORS.length]])
+                                )}
+                            />
                         </div>
                     </div>
                 </div>

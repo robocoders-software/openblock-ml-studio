@@ -1,9 +1,9 @@
 /* ── ML Engine ────────────────────────────────────────────────────
    Transfer-learning pipeline:
-     1. Backbone  – MobileNetV1 α=0.25, served locally on port 20112
-                    loaded via tf.loadLayersModel() and wrapped with a
-                    mobilenet-package-compatible .infer(imgEl, true) API
-                    so the VM extension works unchanged.
+     1. Backbone  – MobileNetV1 α=0.25, loaded via Electron custom protocol
+                    robocoders-resource://models/mobilenet_v1_0.25_224/model.json
+                    Files live in external-resources/ and are served directly from
+                    disk — no HTTP server, no port, works offline indefinitely.
      2. Head      – small trainable dense network (dense-relu → dropout → dense)
      3. Persistence – TF.js built-in IndexedDB model saving
      4. Interface – classifier.predictClass(logits) is KNN-compatible so the
@@ -20,11 +20,11 @@ let _tf         = null;
 let _mobileNet  = null;   // the wrapped backbone object (has .infer())
 let _mobileNetP = null;
 
-/* ── Local model: served by the resource server on port 20112.
-   Run  scripts/download-mobilenet.js  once to populate
-   external-resources/models/mobilenet_v1_0.25_224/
+/* ── Local model: loaded via Electron custom protocol (no HTTP server required).
+   Files live in external-resources/models/mobilenet_v1_0.25_224/
+   Run  scripts/download-mobilenet.js  once to populate that directory.
 ── */
-const LOCAL_MOBILENET_URL  = 'http://localhost:20112/models/mobilenet_v1_0.25_224/model.json';
+const LOCAL_MOBILENET_URL  = 'robocoders-resource://models/mobilenet_v1_0.25_224/model.json';
 const MOBILENET_INPUT_SIZE = 224;
 const EMBEDDING_LAYER_NAME = 'global_average_pooling2d_1';   // output: [batch, 256]
 
@@ -70,8 +70,8 @@ export const getMobileNet = async onStatus => {
             fullModel = await tf.loadLayersModel(LOCAL_MOBILENET_URL);
         } catch (e) {
             throw new Error(
-                `Failed to load MobileNetV1 from local server (${LOCAL_MOBILENET_URL}). ` +
-                'Make sure the desktop app is running and the resource server (port 20112) is active. ' +
+                `Failed to load MobileNetV1 (${LOCAL_MOBILENET_URL}). ` +
+                'Make sure external-resources/models/mobilenet_v1_0.25_224/ is present in the app directory. ' +
                 `Original error: ${e.message}`
             );
         }
@@ -370,15 +370,30 @@ export { saveImageToIDB, getImageFromIDB, deleteProjectIDB } from './idb.js';
 
 /* ════════════════════════════════════════════════════════════════
    Audio / Speech-Commands Engine
-   Uses @tensorflow-models/speech-commands loaded from CDN as UMD.
+   Fully offline — all assets served via robocoders-resource://.
+   Run  scripts/download-speech-commands.js  once to populate:
+     external-resources/libs/speech-commands.min.js
+     external-resources/models/speech-commands-browser-fft/
    Transfer-learning pipeline (matches ML for Kids approach):
      1. Base recognizer  – pre-trained BROWSER_FFT speech-commands model
      2. Transfer recognizer – per-project transfer-learning head
      3. Persistence – tf.io IndexedDB via transferRecognizer.save/load
    ════════════════════════════════════════════════════════════════ */
 
-const SPEECH_COMMANDS_CDN =
-    'https://cdn.jsdelivr.net/npm/@tensorflow-models/speech-commands@0.5.4/dist/speech-commands.min.js';
+// speech-commands.min.js loaded via <script> tag — custom protocol works fine here.
+const SPEECH_COMMANDS_URL = 'robocoders-resource://libs/speech-commands.min.js';
+
+const _getIpc = () => {
+    try { return window.require('electron').ipcRenderer; } catch (_) { return null; }
+};
+
+// speech-commands validates URL scheme internally (only accepts http/https/file) and uses
+// browser fetch for http URLs. The resource server at port 20112 is LOCAL — it serves the
+// bundled files from disk with no internet required. This is the only reliable approach for
+// this library since passing raw ModelArtifacts via IPC causes binary serialization issues
+// that corrupt the model and break transfer-learning layer freezing.
+const BROWSER_FFT_MODEL_URL = 'http://localhost:20112/models/speech-commands-browser-fft/model.json';
+const BROWSER_FFT_META_URL  = 'http://localhost:20112/models/speech-commands-browser-fft/metadata.json';
 
 let _scLib            = null;   // window.speechCommands
 let _baseRecognizer   = null;   // singleton base recognizer
@@ -393,14 +408,15 @@ const loadSpeechCommandsLib = async () => {
         return _scLib;
     }
     const tf = await getTF();
-    // speech-commands UMD needs window.tf
+    // speech-commands UMD needs window.tf exposed globally before the script runs
     if (typeof window !== 'undefined') window.tf = tf;
     await new Promise((resolve, reject) => {
         const s = document.createElement('script');
-        s.src = SPEECH_COMMANDS_CDN;
+        s.src = SPEECH_COMMANDS_URL;
         s.onload = resolve;
         s.onerror = () => reject(new Error(
-            'Could not load speech-commands library. Check your internet connection.'
+            'Could not load speech-commands library from local resources. ' +
+            'Make sure external-resources/libs/speech-commands.min.js exists in the app directory.'
         ));
         document.head.appendChild(s);
     });
@@ -416,7 +432,11 @@ export const initSpeechCommands = async (projectId, onStatus) => {
 
     if (!_baseRecognizer) {
         onStatus && onStatus('Loading audio base model…');
-        _baseRecognizer = sc.create('BROWSER_FFT');
+        // Ensure the resource server is alive before fetching model files.
+        // If it crashed, main process restarts it automatically.
+        const ipc = _getIpc();
+        if (ipc) await ipc.invoke('ensure-resource-server').catch(() => {});
+        _baseRecognizer = sc.create('BROWSER_FFT', undefined, BROWSER_FFT_MODEL_URL, BROWSER_FFT_META_URL);
         await _baseRecognizer.ensureModelLoaded();
     }
 
@@ -444,12 +464,16 @@ export const trainSounds = async (labels, trainingData, projectId, onStatus, onP
     const {epochs: rawEpochs = 50, batchSize: rawBatch = 32, onEpochEnd: epochCb} = config;
     const epochs    = Math.max(1, Math.round(rawEpochs));
     const batchSize = Math.max(1, Math.round(rawBatch));
-    if (!_transferRec || !_soundModelInfo) throw new Error('Audio engine not initialised.');
+    if (!_baseRecognizer || !_soundModelInfo) throw new Error('Audio engine not initialised.');
 
-    // Clear dataset and re-add all stored examples
-    _transferRec.dataset.clear();
-    try { _transferRec.dataset.label2Ids = {}; } catch (_) {}
-    _transferRec.words = null;
+    /* Always create a fresh transfer recognizer before training.
+       Reusing the same instance across multiple train() calls corrupts the
+       internal layer state of the speech-commands library.
+       A unique name suffix is required because the library keeps a global
+       registry — reusing the same name throws "already exists". */
+    const transferName = `project-${projectId}-${Date.now()}`;
+    _transferRec    = _baseRecognizer.createTransfer(transferName);
+    _soundProjectId = projectId;
 
     onStatus && onStatus('Loading audio samples…');
     let added = 0;
@@ -529,5 +553,97 @@ export const startListening = async (callback, options = {}) => {
 export const stopListening = async () => {
     if (_transferRec) {
         try { await _transferRec.stopListening(); } catch (_) {}
+    }
+};
+
+/* ═════════════════════════════════════════════════════════════════
+   Model artifact export / import (used by project-persistence.js)
+   Artifacts: { modelJson: string, weightData: ArrayBuffer }
+   weightData is a raw binary ArrayBuffer — keep it out of JSON so
+   it survives IPC via the structured-clone algorithm without base64
+   inflation when possible; callers that must JSON-serialise it can
+   call bufferToB64 / b64ToBuffer themselves.
+   ═════════════════════════════════════════════════════════════════ */
+
+/* Capture a TF.js LayersModel's topology + weights into plain objects. */
+const _captureModelArtifacts = model =>
+    new Promise((resolve, reject) => {
+        model.save({
+            save: async artifacts => {
+                resolve({
+                    modelJson: JSON.stringify({
+                        modelTopology:    artifacts.modelTopology,
+                        weightsManifest: [{
+                            paths:   ['model.weights.bin'],
+                            weights: artifacts.weightSpecs
+                        }]
+                    }),
+                    weightData: artifacts.weightData   // ArrayBuffer
+                });
+                return {modelArtifactsInfo: {dateSaved: new Date(), modelTopologyType: 'JSON'}};
+            }
+        }).catch(reject);
+    });
+
+/* Restore a TF.js LayersModel from captured artifacts. */
+const _modelFromArtifacts = async (modelJsonStr, weightData) => {
+    const tf      = await getTF();
+    const parsed  = JSON.parse(modelJsonStr);
+    const buffer  = weightData instanceof ArrayBuffer ? weightData
+        : (weightData && weightData.buffer) ? weightData.buffer
+        : weightData;
+    return tf.loadLayersModel(tf.io.fromMemory(
+        {
+            modelTopology: parsed.modelTopology,
+            weightSpecs:   parsed.weightsManifest[0].weights,
+            weightData:    buffer
+        }
+    ));
+};
+
+/* ── Image head export / import ── */
+export const exportTrainedHead = head => _captureModelArtifacts(head);
+
+export const loadHeadFromArtifacts = async (modelJsonStr, weightData, labels) => {
+    const head = await _modelFromArtifacts(modelJsonStr, weightData);
+    return wrapHead(head, labels);
+};
+
+/* ── Audio (speech-commands transfer) export / import ── */
+
+/* Export the currently trained transfer recognizer.
+   Returns null if no model has been trained/saved yet. */
+export const exportAudioModelArtifacts = async () => {
+    if (!_soundProjectId) return null;
+    const tf = await getTF();
+    let model;
+    try {
+        model = await tf.loadLayersModel(`indexeddb://ml-sound-${_soundProjectId}`);
+    } catch (_) {
+        return null;
+    }
+    try {
+        return await _captureModelArtifacts(model);
+    } finally {
+        model.dispose();
+    }
+};
+
+/* Load audio model from artifacts back into the speech-commands pipeline.
+   Saves the restored LayersModel to IDB so loadSoundClassifier() can pick it up.
+   Returns true on success. */
+export const loadAudioModelFromArtifacts = async (modelJsonStr, weightData, labels) => {
+    const projectId = _soundProjectId;
+    if (!projectId) return false;
+    try {
+        const tf    = await getTF();
+        const model = await _modelFromArtifacts(modelJsonStr, weightData);
+        await model.save(`indexeddb://ml-sound-${projectId}`);
+        model.dispose();
+        await idbPut('models', `sound-labels:${projectId}`, JSON.stringify(labels));
+        return true;
+    } catch (e) {
+        console.warn('[ml-engine] loadAudioModelFromArtifacts failed:', e.message);
+        return false;
     }
 };
