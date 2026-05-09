@@ -4,7 +4,7 @@
      'models'  – key = "knn:{projectId}"          value = serialized JSON string
    ─────────────────────────────────────────────────────────────── */
 const DB_NAME    = 'openblock_ml_studio';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 
 let dbPromise = null;
 
@@ -14,7 +14,7 @@ const getDB = () => {
         const req = indexedDB.open(DB_NAME, DB_VERSION);
         req.onupgradeneeded = evt => {
             const db = evt.target.result;
-            ['images', 'models'].forEach(name => {
+            ['images', 'models', 'audio-samples', 'audio-thumbs'].forEach(name => {
                 if (!db.objectStoreNames.contains(name)) {
                     db.createObjectStore(name);
                 }
@@ -96,10 +96,47 @@ export const loadProjectImages = async (projectId, trainingData) => {
 export const deleteProjectIDB = async (projectId) => {
     const imageKeys = await idbGetAllKeys('images', `${projectId}:`);
     for (const k of imageKeys) await idbDelete('images', k);
+    const audioKeys = await idbGetAllKeys('audio-samples', `${projectId}:`);
+    for (const k of audioKeys) await idbDelete('audio-samples', k);
+    const thumbKeys = await idbGetAllKeys('audio-thumbs', `${projectId}:`);
+    for (const k of thumbKeys) await idbDelete('audio-thumbs', k);
     await idbDelete('models', `knn:${projectId}`);
     await idbDelete('models', `knn:text:${projectId}`);
     await idbDelete('models', `knn:numbers:${projectId}`);
     await idbDelete('models', `vocab:${projectId}`);
+    await idbDelete('models', `sound-labels:${projectId}`);
+};
+
+/* ── Audio sample helpers ── */
+export const saveAudioToIDB = async (projectId, id, spectrogramData, frameSize) => {
+    await idbPut('audio-samples', `${projectId}:${id}`, {data: Array.from(spectrogramData), frameSize});
+};
+
+export const getAudioFromIDB = async (projectId, id) => {
+    return idbGet('audio-samples', `${projectId}:${id}`);
+};
+
+export const saveAudioThumbToIDB = async (projectId, id, dataUrl) => {
+    await idbPut('audio-thumbs', `${projectId}:${id}`, dataUrl);
+};
+
+export const getAudioThumbFromIDB = async (projectId, id) => {
+    return idbGet('audio-thumbs', `${projectId}:${id}`);
+};
+
+export const loadProjectAudio = async (projectId, trainingData) => {
+    const out = {};
+    for (const [label, samples] of Object.entries(trainingData || {})) {
+        out[label] = await Promise.all(
+            (samples || []).map(async ex => {
+                if (ex.type !== 'audio') return ex;
+                const stored = await getAudioFromIDB(projectId, ex.id);
+                if (!stored) return ex;
+                return {...ex, spectrogramData: stored.data, frameSize: stored.frameSize};
+            })
+        );
+    }
+    return out;
 };
 
 /* ── KNN serialization helpers ── */

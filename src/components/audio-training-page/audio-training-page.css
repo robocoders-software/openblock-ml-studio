@@ -1,0 +1,635 @@
+/* ── Audio Training Page — shares color tokens with ml-training-page ── */
+
+.page {
+    position: fixed;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+    z-index: 9999;
+    overflow: hidden;
+}
+
+/* ── Header ── */
+.header {
+    height: 50px;
+    background: #9966FF;
+    display: flex;
+    align-items: center;
+    padding: 0 16px;
+    flex-shrink: 0;
+    color: white;
+    gap: 16px;
+    box-shadow: 0 2px 8px rgba(153,102,255,0.35);
+}
+.headerLogo   { height: 1.6rem; vertical-align: middle; flex-shrink: 0; }
+.headerTitle  { font-size: 17px; font-weight: 700; margin-right: 2px; white-space: nowrap; }
+.headerSpacer { flex: 1; }
+.headerNav    { display: flex; align-items: stretch; height: 50px; }
+
+.navBtn {
+    background: none;
+    border: none;
+    color: white;
+    font-size: 14px;
+    cursor: pointer;
+    padding: 0 14px;
+    opacity: 0.9;
+    font-family: inherit;
+    display: flex;
+    align-items: center;
+    transition: background 0.15s;
+    white-space: nowrap;
+}
+.navBtn:hover { opacity: 1; background: rgba(255, 255, 255, 0.12); }
+
+.fileMenuWrap { position: relative; display: flex; align-items: stretch; }
+
+.navDropdown {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    background: #5c1a8a;
+    border-radius: 0 0 4px 4px;
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
+    z-index: 1000;
+    min-width: 210px;
+    overflow: hidden;
+}
+
+.navDropdown button {
+    display: block;
+    width: 100%;
+    text-align: left;
+    padding: 10px 20px;
+    border: none;
+    background: transparent;
+    cursor: pointer;
+    font-size: 14px;
+    color: white;
+    transition: background 0.15s;
+    font-family: inherit;
+}
+
+.navDropdown button:hover { background: rgba(255, 255, 255, 0.14); }
+
+.headerBackBtn {
+    background: rgba(255,255,255,0.18);
+    border: 1.5px solid rgba(255,255,255,0.55);
+    color: white;
+    border-radius: 20px;
+    padding: 5px 14px;
+    font-size: 13px;
+    cursor: pointer;
+    transition: background 0.15s;
+}
+.headerBackBtn:hover { background: rgba(255,255,255,0.3); }
+
+/* ── Sub-header ── */
+.subHeader {
+    height: 54px;
+    background: #F0E8FF;
+    display: flex;
+    align-items: center;
+    padding: 0 16px;
+    gap: 12px;
+    flex-shrink: 0;
+    border-bottom: 1px solid #C8A8F0;
+}
+.subHeaderType  { font-size: 15px; font-weight: 700; color: #9966FF; }
+.infoIcon {
+    display: flex; align-items: center; justify-content: center;
+    cursor: help; flex-shrink: 0;
+    opacity: 0.9; transition: opacity 0.15s, transform 0.15s;
+}
+.infoIcon:hover { opacity: 1; transform: scale(1.1); }
+.divider   { width: 1px; height: 30px; background: #C8A8F0; }
+.projectNamePill {
+    background: #9966FF; color: white;
+    border-radius: 8px; padding: 5px 14px;
+    font-size: 13px; font-weight: 600;
+}
+.saveBtn {
+    background: none; border: none; cursor: pointer;
+    color: #9966FF; font-size: 20px; padding: 4px 6px;
+    border-radius: 6px; transition: background 0.15s;
+}
+.saveBtn:hover { background: #E0CCFF; }
+.spacer { flex: 1; }
+.webcamLabel { font-size: 12px; color: #555; font-weight: 600; white-space: nowrap; }
+.webcamSelect {
+    border: 1.5px solid #C8A8F0; border-radius: 8px;
+    padding: 5px 10px; font-size: 12px; color: #333;
+    background: white; cursor: pointer; max-width: 260px;
+}
+.webcamSelect:focus { border-color: #9966FF; outline: none; }
+
+/* ── Canvas (main scrollable area) ── */
+.canvas {
+    flex: 1;
+    background: #f0f0f0;
+    overflow: auto;
+    position: relative;
+    display: grid;
+    grid-template-columns: minmax(280px, 42%) 1fr;
+    grid-template-rows: 1fr;
+    align-items: center;
+    padding: 28px 24px;
+    gap: 0 28px;
+    min-height: 0;
+}
+
+.curveSvg {
+    position: absolute; inset: 0;
+    width: 100%; height: 100%;
+    pointer-events: none; z-index: 1; overflow: visible;
+}
+
+/* ── Left: classes column ── */
+.classesColumn {
+    display: flex; flex-direction: column; gap: 16px;
+    position: relative; z-index: 2;
+    align-self: start;
+}
+
+/* ── Class card ── */
+.classCard {
+    background: white; border-radius: 12px;
+    overflow: visible;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.10), 0 1px 3px rgba(0,0,0,0.06);
+    transition: opacity 0.2s, box-shadow 0.2s;
+}
+.classCard:hover {
+    box-shadow: 0 6px 24px rgba(153,102,255,0.16), 0 2px 6px rgba(0,0,0,0.08);
+}
+.classCardDisabled { opacity: 0.45; }
+.classCardDisabled .classCardBody { pointer-events: none; }
+.classCardHeader {
+    display: flex; align-items: center;
+    padding: 11px 14px; color: white; gap: 8px;
+    border-radius: 12px 12px 0 0;
+}
+.classCardNameRow {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex: 1;
+    min-width: 0;
+}
+.classCardTitle {
+    font-size: 15px; font-weight: 700;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.classCardEditBtn {
+    background: none; border: none;
+    color: rgba(255,255,255,0.9); cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    padding: 5px; border-radius: 6px; flex-shrink: 0;
+    transition: background 0.15s;
+}
+.classCardEditBtn:hover { background: rgba(255,255,255,0.25); }
+.classCardMenuBtn {
+    background: none; border: none;
+    color: rgba(255,255,255,0.85); cursor: pointer;
+    font-size: 18px; padding: 2px 4px; border-radius: 4px;
+    transition: background 0.15s;
+}
+.classCardMenuBtn:hover { background: rgba(255,255,255,0.22); }
+.classCardMenu {
+    position: absolute; right: 0; top: 100%;
+    background: #9966FF; border-radius: 8px;
+    box-shadow: 0 4px 14px rgba(153,102,255,0.35);
+    z-index: 20; min-width: 160px; overflow: hidden;
+}
+.classCardMenu button {
+    display: block; width: 100%; padding: 10px 16px;
+    text-align: left; border: none; background: transparent;
+    cursor: pointer; font-size: 13px; color: white;
+    transition: background 0.15s;
+}
+.classCardMenu button:hover { background: rgba(255,255,255,0.18); color: white; }
+.classCardMenu button.danger { color: #FFB3B3; }
+.classCardMenu button.danger:hover { background: rgba(255,255,255,0.18); color: #FFB3B3; }
+
+.menuDivider {
+    height: 1px;
+    background: rgba(255,255,255,0.25);
+    margin: 4px 0;
+}
+
+.menuConfirm {
+    padding: 12px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+.menuConfirmText {
+    font-size: 12px;
+    color: white;
+    margin: 0;
+    font-weight: 600;
+    line-height: 1.4;
+}
+.menuConfirmBtns { display: flex; gap: 8px; }
+.menuConfirmYes {
+    flex: 1;
+    background: #e53935;
+    color: white;
+    border: none;
+    border-radius: 6px;
+    padding: 6px 10px;
+    font-size: 12px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: background 0.15s;
+}
+.menuConfirmYes:hover { background: #c62828; }
+.menuConfirmNo {
+    flex: 1;
+    background: rgba(255,255,255,0.2);
+    color: white;
+    border: none;
+    border-radius: 6px;
+    padding: 6px 10px;
+    font-size: 12px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: background 0.15s;
+}
+.menuConfirmNo:hover { background: rgba(255,255,255,0.32); }
+
+.disabledBadge {
+    font-size: 9px;
+    font-weight: 800;
+    letter-spacing: 0.5px;
+    background: rgba(0,0,0,0.35);
+    color: rgba(255,255,255,0.9);
+    border-radius: 4px;
+    padding: 2px 6px;
+    flex-shrink: 0;
+}
+
+.activeClassInfo {
+    background: #F0E8FF;
+    color: #7040C0;
+    font-size: 11px;
+    font-weight: 700;
+    text-align: center;
+    padding: 5px 14px;
+    border-bottom: 1px solid #E0CCFF;
+}
+
+.nameEditInput {
+    font-size: 15px; font-weight: 700;
+    background: rgba(255,255,255,0.2);
+    border: 1.5px solid rgba(255,255,255,0.6);
+    color: white; border-radius: 6px;
+    padding: 2px 8px; flex: 1; outline: none;
+}
+
+.classCardBody {
+    display: flex; min-height: 180px;
+    border-radius: 0 0 12px 12px;
+}
+.classCardBodyCam {
+    min-height: 0;
+}
+
+/* ── Left panel: idle mode ── */
+.classCardLeft {
+    flex: 3; padding: 14px 16px;
+    border-right: 1px solid #F0E8FF;
+    display: flex; flex-direction: column;
+    gap: 10px; align-items: center; justify-content: center;
+}
+
+.idleAddMode {
+    display: flex; flex-direction: column;
+    align-items: center; gap: 10px; width: 100%;
+}
+.addSamplesLabel { font-size: 12px; font-weight: 700; color: #555; }
+
+.micIdleBtn {
+    display: flex; flex-direction: column;
+    align-items: center; gap: 6px;
+    border: 1.5px dashed #C8A8F0; border-radius: 8px;
+    padding: 14px 22px; cursor: pointer;
+    background: #fafafa; font-size: 12px; color: #666;
+    min-width: 90px; transition: border-color 0.2s, background 0.2s, color 0.2s;
+}
+.micIdleBtn:hover { border-color: #9966FF; background: #F0E8FF; color: #9966FF; }
+
+/* ── Left panel: mic recording mode ── */
+.micRecordView {
+    display: flex; flex-direction: column;
+    gap: 8px; width: 100%;
+}
+.micHeader {
+    display: flex; align-items: center;
+    justify-content: space-between;
+}
+.micLabel { font-size: 12px; font-weight: 700; color: #555; }
+.camBackBtn {
+    background: none; border: none; color: #9966FF;
+    font-size: 16px; cursor: pointer; padding: 2px 6px;
+    border-radius: 4px; line-height: 1;
+    transition: background 0.15s;
+}
+.camBackBtn:hover { background: #F0E8FF; }
+
+.liveWaveform {
+    width: 100%; height: 110px;
+    border-radius: 6px; background: #000;
+    display: block;
+}
+
+.holdBtn {
+    width: 100%; background: #9966FF; color: white;
+    border: none; border-radius: 20px;
+    padding: 10px; font-size: 13px; font-weight: 700;
+    cursor: pointer; user-select: none; -webkit-user-select: none;
+    transition: background 0.15s;
+}
+.holdBtn:hover:not(:disabled)  { background: #7040C0; }
+.holdBtn:active:not(:disabled) { background: #5C2FA0; }
+.holdBtn:disabled { background: #C8A8F0; cursor: not-allowed; }
+.holdBtnRecording {
+    background: #e53935 !important;
+    animation: pulse 0.8s ease-in-out infinite;
+}
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50%       { opacity: 0.7; }
+}
+
+/* ── Resource error (mic/camera busy) ── */
+.resourceError {
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    gap: 8px; padding: 16px 10px; text-align: center; flex: 1;
+}
+.resourceErrorIcon {
+    width: 44px; height: 44px; border-radius: 50%;
+    background: #ffebee; border: 2.5px solid #e53935;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 22px; font-weight: 900; color: #e53935; flex-shrink: 0;
+}
+.resourceErrorTitle { font-size: 13px; font-weight: 700; color: #333; margin: 0; }
+.resourceErrorMsg { font-size: 11px; color: #777; margin: 0; line-height: 1.4; }
+.resourceRetryBtn {
+    background: none; border: 1.5px solid #9966FF; color: #9966FF;
+    border-radius: 16px; padding: 5px 14px; font-size: 11px; font-weight: 700;
+    cursor: pointer; transition: background 0.15s; margin-top: 2px;
+}
+.resourceRetryBtn:hover { background: #F0E8FF; }
+
+/* ── Settings panel ── */
+.settingsPanel { display: flex; flex-direction: column; width: 100%; }
+.settingsPanelHeader {
+    display: flex; align-items: center; justify-content: space-between;
+    background: #E0CCFF; padding: 7px 12px;
+    font-size: 13px; font-weight: 700; color: #6633cc;
+    border-radius: 6px 6px 0 0; margin-bottom: 2px;
+}
+.settingsForm { display: flex; flex-direction: column; gap: 12px; padding: 14px 12px; }
+.settingsRow { display: flex; align-items: center; gap: 10px; }
+.settingsLabel { font-size: 12px; font-weight: 600; color: #444; min-width: 100px; }
+.settingsInput {
+    width: 60px; border: 1.5px solid #C8A8F0; border-radius: 6px;
+    padding: 4px 8px; font-size: 13px; color: #333; outline: none;
+    transition: border-color 0.2s;
+}
+.settingsInput:focus { border-color: #9966FF; }
+.settingsUnit { font-size: 12px; color: #777; }
+.toggleSwitch {
+    width: 42px; height: 22px; border-radius: 11px;
+    background: #ccc; border: none; cursor: pointer;
+    position: relative; transition: background 0.2s;
+    padding: 0; flex-shrink: 0;
+}
+.toggleOn { background: #9966FF; }
+.toggleThumb {
+    position: absolute; top: 3px; left: 3px;
+    width: 16px; height: 16px; border-radius: 50%;
+    background: white; transition: left 0.2s;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.25);
+}
+.toggleOn .toggleThumb { left: 23px; }
+.saveSettingsBtn {
+    background: #9966FF; color: white; border: none;
+    border-radius: 20px; padding: 9px 16px;
+    font-size: 13px; font-weight: 700; cursor: pointer;
+    align-self: flex-end; transition: background 0.2s;
+}
+.saveSettingsBtn:hover { background: #7040C0; }
+
+/* ── Right panel: sample thumbnails ── */
+.classCardRight {
+    flex: 2; padding: 14px;
+    display: flex; flex-direction: column; gap: 8px; min-width: 0;
+    max-height: 280px; overflow-y: auto;
+}
+.sampleCountLabel { font-size: 12px; color: #888; font-weight: 600; }
+.thumbnailGrid {
+    display: grid; grid-template-columns: repeat(3, 1fr);
+    gap: 4px; align-content: start;
+}
+.thumb {
+    aspect-ratio: 16/9; border-radius: 4px;
+    overflow: hidden; background: #000;
+    position: relative;
+}
+.waveThumb {
+    width: 100%; height: 100%;
+    object-fit: fill; display: block;
+}
+.thumbMore {
+    position: absolute; inset: 0; background: rgba(0,0,0,0.55);
+    color: white; display: flex; align-items: center;
+    justify-content: center; font-size: 11px; font-weight: 700;
+}
+.thumbDeleteBtn {
+    position: absolute; top: 2px; right: 2px;
+    width: 16px; height: 16px;
+    background: rgba(0,0,0,0.7); color: white;
+    border: none; border-radius: 50%; font-size: 9px;
+    line-height: 1; cursor: pointer;
+    display: none; align-items: center; justify-content: center;
+    padding: 0; z-index: 3;
+}
+.thumb:hover .thumbDeleteBtn { display: flex; }
+
+/* ── Add Class button ── */
+.addClassCard {
+    border: 2px dashed #C8A8F0; border-radius: 12px;
+    padding: 18px; text-align: center; cursor: pointer;
+    color: #9966FF; font-size: 15px; font-weight: 700;
+    background: rgba(255,255,255,0.7); width: 100%;
+    transition: background 0.2s, border-color 0.2s, box-shadow 0.2s;
+}
+.addClassCard:hover {
+    background: rgba(153,102,255,0.07);
+    border-color: #9966FF;
+    box-shadow: 0 2px 12px rgba(153,102,255,0.15);
+}
+
+/* ── Right area: Training + Testing ── */
+.rightArea {
+    display: flex;
+    gap: 24px;
+    align-items: center;
+    justify-content: center;
+    align-self: center;
+    position: relative;
+    z-index: 2;
+}
+
+/* ── Training card ── */
+.trainingCard {
+    background: white; border-radius: 12px;
+    overflow: hidden;
+    box-shadow: 0 4px 20px rgba(153,102,255,0.18), 0 1px 4px rgba(0,0,0,0.08);
+    flex: 1; min-width: 240px; max-width: 360px;
+    position: relative; z-index: 2;
+}
+.trainingHeader {
+    background: linear-gradient(135deg, #9966FF 0%, #7744dd 100%);
+    color: white;
+    padding: 12px 16px; font-size: 15px; font-weight: 700; letter-spacing: 0.3px;
+    display: flex; align-items: center; justify-content: space-between;
+}
+.trainingBody { padding: 18px 16px; display: flex; flex-direction: column; gap: 14px; }
+
+.trainModelBtn {
+    background: linear-gradient(135deg, #9966FF 0%, #7744dd 100%);
+    color: white; border: none;
+    border-radius: 24px; padding: 13px 16px;
+    font-size: 14px; font-weight: 700; cursor: pointer; width: 100%;
+    transition: opacity 0.2s, transform 0.15s, box-shadow 0.2s;
+    box-shadow: 0 4px 14px rgba(153,102,255,0.45);
+    letter-spacing: 0.3px;
+}
+.trainModelBtn:hover:not(:disabled) {
+    opacity: 0.9; transform: translateY(-1px);
+    box-shadow: 0 6px 18px rgba(153,102,255,0.55);
+}
+.trainModelBtn:active:not(:disabled) { transform: translateY(0); }
+.trainModelBtn:disabled { background: #C8A8F0; cursor: not-allowed; box-shadow: none; }
+
+.trainAgainBtn {
+    background: transparent; color: #9966FF;
+    border: 2px solid #9966FF; border-radius: 20px;
+    padding: 9px 12px; font-size: 13px; font-weight: 700;
+    cursor: pointer; width: 100%; transition: background 0.2s, color 0.2s;
+}
+.trainAgainBtn:hover:not(:disabled) { background: #9966FF; color: white; }
+.trainAgainBtn:disabled { border-color: #C8A8F0; color: #C8A8F0; cursor: not-allowed; }
+
+.progressTrack { height: 6px; background: #F0E8FF; border-radius: 3px; overflow: hidden; }
+.progressFill {
+    height: 100%;
+    background: linear-gradient(90deg, #9966FF, #774DCB);
+    border-radius: 3px; transition: width 0.3s;
+}
+
+.trainStatusText    { font-size: 11px; color: #666; text-align: center; }
+.trainCompletedText { font-size: 12px; font-weight: 700; color: #27ae60; text-align: center; }
+
+.useInBlocksBtn {
+    background: #FF8C1A; border: none; color: white;
+    border-radius: 20px; padding: 9px 20px;
+    font-size: 13px; font-weight: 700; cursor: pointer; width: 100%;
+    transition: background 0.15s;
+}
+.useInBlocksBtn:hover:not(:disabled) { background: #e07800; }
+.useInBlocksBtn:disabled { background: #ddd; color: #999; cursor: not-allowed; }
+
+.chartWrap {
+    background: #F8F4FF; border: 1px solid #E0CCFF;
+    border-radius: 8px; padding: 8px 4px 4px; overflow: hidden;
+}
+
+.trainingFooter {
+    border-top: 1px solid #F0E8FF; padding: 10px 14px;
+    display: flex; align-items: center; justify-content: space-between;
+    cursor: pointer; color: #9966FF;
+    font-size: 13px; font-weight: 600; transition: background 0.15s;
+}
+.trainingFooter:hover { background: #F8F4FF; }
+
+.advancedSection {
+    border-top: 1px solid #F0E8FF; padding: 12px 14px;
+    display: flex; flex-direction: column; gap: 8px;
+}
+.advancedRow {
+    display: flex; align-items: center; justify-content: space-between;
+    font-size: 12px; color: #555;
+}
+.advancedInput {
+    width: 60px; padding: 3px 6px;
+    border: 1px solid #C8A8F0; border-radius: 6px;
+    font-size: 12px; text-align: center;
+}
+.advancedInput:focus { border-color: #9966FF; outline: none; }
+.advancedBtnsRow { display: flex; gap: 8px; margin-top: 4px; }
+.trainReportBtn {
+    flex: 1; background: #F0E8FF; color: #9966FF;
+    border: none; border-radius: 8px; padding: 7px 8px;
+    font-size: 11px; font-weight: 700; cursor: pointer;
+    transition: background 0.15s;
+}
+.trainReportBtn:hover { background: #E0CCFF; }
+.resetBtn {
+    flex: 1; background: #fff0f0; color: #c0392b;
+    border: none; border-radius: 8px; padding: 7px 8px;
+    font-size: 11px; font-weight: 700; cursor: pointer;
+    transition: background 0.15s;
+}
+.resetBtn:hover { background: #ffd8d8; }
+
+/* ── Testing card ── */
+.testingCard {
+    background: white; border-radius: 12px;
+    overflow: hidden;
+    box-shadow: 0 4px 20px rgba(153,102,255,0.18), 0 1px 4px rgba(0,0,0,0.08);
+    flex: 1; min-width: 220px; max-width: 340px;
+    position: relative; z-index: 2;
+}
+.testingHeader {
+    background: linear-gradient(135deg, #9966FF 0%, #7744dd 100%);
+    color: white;
+    padding: 12px 16px; font-size: 15px; font-weight: 700; letter-spacing: 0.3px;
+    display: flex; align-items: center; justify-content: space-between; gap: 8px;
+}
+.exportModelBtn {
+    background: rgba(255,255,255,0.18);
+    border: 1.5px solid rgba(255,255,255,0.6);
+    color: white; border-radius: 14px;
+    padding: 4px 10px; font-size: 11px; font-weight: 700;
+    cursor: pointer; white-space: nowrap;
+    transition: background 0.15s;
+}
+.exportModelBtn:hover { background: rgba(255,255,255,0.32); }
+
+.testingBody { padding: 16px; min-height: 100px; display: flex; flex-direction: column; gap: 10px; }
+.testingPlaceholder { font-size: 13px; color: #999; line-height: 1.5; }
+
+.testPanelContent { display: flex; flex-direction: column; gap: 8px; width: 100%; }
+.testByLabel { font-size: 12px; font-weight: 700; color: #555; text-align: center; }
+.testOptionRow { display: flex; gap: 10px; justify-content: center; }
+
+.testOptionBtn {
+    display: flex; flex-direction: column; align-items: center; gap: 4px;
+    border: 1.5px solid #C8A8F0; border-radius: 8px;
+    padding: 10px 14px; cursor: pointer;
+    background: #fafafa; font-size: 11px; font-weight: 600; color: #555;
+    min-width: 80px; transition: border-color 0.15s, background 0.15s, color 0.15s;
+}
+.testOptionBtn:hover       { border-color: #9966FF; background: #F0E8FF; color: #9966FF; }
+.testOptionBtnActive       { border-color: #e53935; background: #fff5f5; color: #e53935; }
+.testOptionBtnActive:hover { border-color: #e53935; background: #fff0f0; color: #e53935; }
+
+.testResultBar      { margin-bottom: 6px; }
+.testResultLabelRow { display: flex; justify-content: space-between; font-size: 11px; color: #444; margin-bottom: 2px; font-weight: 600; }
+.testResultTrack    { height: 7px; background: #F0E8FF; border-radius: 4px; overflow: hidden; }
+.testResultFill     { height: 100%; background: linear-gradient(90deg, #9966FF, #774DCB); border-radius: 4px; transition: width 0.3s; }

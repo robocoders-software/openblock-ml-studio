@@ -1,17 +1,23 @@
 import React, {useState, useRef, useEffect, useLayoutEffect, useCallback} from 'react';
 import PropTypes from 'prop-types';
 import styles from './ml-training-page.css';
+import AudioTrainingPage from '../audio-training-page/audio-training-page.jsx';
+import openblockLogo from '../openblock-logo.svg';
+import Loader from 'openblock-gui/src/components/loader/loader.jsx';
+import Spinner from 'openblock-gui/src/components/spinner/spinner.jsx';
 
 import {
     getMobileNet,
     trainImages,
     loadImageClassifier,
     predictImages,
+    evaluateImageModel,
     saveImageToIDB,
     getImageFromIDB,
     setActiveModel
 } from '../../lib/ml-engine.js';
 import {loadProjectImages} from '../../lib/idb.js';
+import TrainReportModal from './TrainReportModal.jsx';
 
 const CLASS_COLORS = ['#E05C3D', '#2EAA7E', '#9966FF', '#774DCB', '#F39C12', '#E91E63', '#1ABC9C', '#E67E22'];
 const MAX_THUMBS   = 9;
@@ -57,25 +63,69 @@ AccuracyChart.propTypes = {points: PropTypes.array};
    Class card with inline webcam
 ────────────────────────────────────────────── */
 const ClassCard = React.forwardRef(({
-    label, colorIdx, samples, onAddImages, onDeleteSample, onRename, onDelete, canDelete, projectId, selectedDeviceId
+    label, colorIdx, samples, onAddImages, onDeleteSample, onDeleteAllSamples,
+    onRename, onDelete, canDelete, onToggleDisable, isDisabled, projectId, selectedDeviceId,
+    menuOpen, onOpenMenu, onCloseMenu,
+    isWebcamActive, onRequestWebcam, onReleaseWebcam
 }, ref) => {
     const color = CLASS_COLORS[colorIdx % CLASS_COLORS.length];
-    const [editing,    setEditing]   = useState(false);
-    const [newName,    setNewName]   = useState(label);
-    const [menuOpen,   setMenu]      = useState(false);
-    const [thumbData,  setThumbData] = useState([]); // [{src, id}]
-    const [showWebcam, setShowWebcam] = useState(false);
-    const [camErr,     setCamErr]    = useState('');
+    const [editing,       setEditing]   = useState(false);
+    const [newName,       setNewName]   = useState(label);
+    const [confirmAction, setConfirm]   = useState(null);
+    const [thumbData,     setThumbData] = useState([]);
+    const [showWebcam,    setShowWebcam] = useState(false);
+    const [camErr,        setCamErr]    = useState('');
+    const [showSettings,  setShowSettings] = useState(false);
+
+    /* ── Capture settings ── */
+    const [fps,             setFps]           = useState(15);
+    const [autoRecord,      setAutoRecord]     = useState(false); // false = hold mode, true = timed
+    const [captureDelay,    setCaptureDelay]   = useState(1);
+    const [captureDuration, setCaptureDuration] = useState(4);
+    /* Temp edit state while settings panel is open */
+    const [editFps,      setEditFps]      = useState(15);
+    const [editAuto,     setEditAuto]     = useState(false);
+    const [editDelay,    setEditDelay]    = useState(1);
+    const [editDuration, setEditDuration] = useState(4);
+    /* Auto-record runtime */
+    const [autoCountdown, setAutoCountdown] = useState(0); // >0 = delaying
+    const [autoRunning,   setAutoRunning]   = useState(false);
+    const autoTimerRef = useRef(null);
 
     const fileRef   = useRef(null);
     const videoRef  = useRef(null);
     const streamRef = useRef(null);
     const holdRef   = useRef(null);
+    const menuRef   = useRef(null);
+
+    /* Close menu when clicking outside */
+    useEffect(() => {
+        if (!menuOpen) return;
+        const handler = e => {
+            if (menuRef.current && !menuRef.current.contains(e.target)) {
+                onCloseMenu();
+                setConfirm(null);
+            }
+        };
+        document.addEventListener('mousedown', handler);
+        return () => document.removeEventListener('mousedown', handler);
+    }, [menuOpen, onCloseMenu]);
+
+    /* Stop webcam when another class takes ownership */
+    useEffect(() => {
+        if (!isWebcamActive && streamRef.current) {
+            if (holdRef.current) { clearInterval(holdRef.current); holdRef.current = null; }
+            streamRef.current.getTracks().forEach(t => t.stop());
+            streamRef.current = null;
+            setShowWebcam(false);
+            setCamErr('');
+        }
+    }, [isWebcamActive]);
 
     /* Load thumbnails with id tracking for deletion */
     useEffect(() => {
         let cancelled = false;
-        const toLoad = samples.filter(s => s.type === 'image').slice(0, MAX_THUMBS);
+        const toLoad = samples.filter(s => s.type === 'image');
         Promise.all(toLoad.map(async s => {
             const src = (s.data && s.data.startsWith('data:')) ? s.data : await getImageFromIDB(projectId, s.id);
             return src ? {src, id: s.id} : null;
@@ -86,24 +136,44 @@ const ClassCard = React.forwardRef(({
     /* Cleanup on unmount */
     useEffect(() => () => {
         if (holdRef.current) clearInterval(holdRef.current);
+        if (autoTimerRef.current) { clearInterval(autoTimerRef.current); clearTimeout(autoTimerRef.current); }
         if (streamRef.current) streamRef.current.getTracks().forEach(t => t.stop());
     }, []);
 
-    /* Attach stream to video element after it renders */
+    /* Attach stream to video element after it renders (also re-fires when settings panel closes) */
     useEffect(() => {
-        if (showWebcam && videoRef.current && streamRef.current) {
+        if (!showSettings && showWebcam && videoRef.current && streamRef.current) {
             videoRef.current.srcObject = streamRef.current;
         }
-    }, [showWebcam]);
+    }, [showWebcam, showSettings]);
+
+    const friendlyCamError = e => {
+        const n = e.name || '';
+        if (n === 'NotAllowedError' || n === 'PermissionDeniedError')
+            return {title: 'Permission Denied', msg: 'Camera access was blocked. Allow camera permission in your browser or system settings.'};
+        if (n === 'NotFoundError' || n === 'DevicesNotFoundError')
+            return {title: 'No Camera Found', msg: 'No camera device was detected. Connect a webcam and try again.'};
+        if (n === 'NotReadableError' || n === 'TrackStartError')
+            return {title: 'Camera Busy', msg: 'Your camera might be open in another application. Close it and try again.'};
+        if (n === 'OverconstrainedError')
+            return {title: 'Camera Unavailable', msg: 'The selected camera does not support the required settings.'};
+        return {title: 'Camera Error', msg: e.message || 'Could not start the camera. Please try again.'};
+    };
 
     const startWebcam = async () => {
+        onRequestWebcam();
         setCamErr('');
+        setShowWebcam(true); // show panel immediately (video attaches after stream)
         const constraints = {video: selectedDeviceId ? {deviceId: {exact: selectedDeviceId}} : true};
         try {
             const stream = await navigator.mediaDevices.getUserMedia(constraints);
             streamRef.current = stream;
-            setShowWebcam(true); // video element renders, then effect above attaches stream
-        } catch (e) { setCamErr(e.message); }
+            if (videoRef.current) videoRef.current.srcObject = stream;
+        } catch (e) {
+            const {title, msg} = friendlyCamError(e);
+            setCamErr(`${title}|||${msg}`);
+            onReleaseWebcam();
+        }
     };
 
     const stopWebcam = () => {
@@ -111,6 +181,7 @@ const ClassCard = React.forwardRef(({
         if (streamRef.current) { streamRef.current.getTracks().forEach(t => t.stop()); streamRef.current = null; }
         setShowWebcam(false);
         setCamErr('');
+        onReleaseWebcam();
     };
 
     const captureOne = useCallback(() => {
@@ -124,14 +195,64 @@ const ClassCard = React.forwardRef(({
 
     const holdStart = e => {
         e.preventDefault();
-        if (holdRef.current) return; // already holding
+        if (holdRef.current) return;
         captureOne();
-        holdRef.current = setInterval(captureOne, 200);
+        holdRef.current = setInterval(captureOne, Math.round(1000 / fps));
     };
 
     const holdEnd = e => {
         e.preventDefault();
         if (holdRef.current) { clearInterval(holdRef.current); holdRef.current = null; }
+    };
+
+    const startAutoRecord = () => {
+        if (autoRunning || autoCountdown > 0) return;
+        if (captureDelay > 0) {
+            setAutoCountdown(captureDelay);
+            let remaining = captureDelay;
+            autoTimerRef.current = setInterval(() => {
+                remaining -= 1;
+                setAutoCountdown(remaining);
+                if (remaining <= 0) {
+                    clearInterval(autoTimerRef.current);
+                    autoTimerRef.current = null;
+                    runAutoCapture();
+                }
+            }, 1000);
+        } else {
+            runAutoCapture();
+        }
+    };
+
+    const runAutoCapture = () => {
+        setAutoRunning(true);
+        setAutoCountdown(0);
+        const interval = Math.round(1000 / fps);
+        holdRef.current = setInterval(captureOne, interval);
+        autoTimerRef.current = setTimeout(() => {
+            if (holdRef.current) { clearInterval(holdRef.current); holdRef.current = null; }
+            setAutoRunning(false);
+            autoTimerRef.current = null;
+        }, captureDuration * 1000);
+    };
+
+    const openSettings = () => {
+        setEditFps(fps);
+        setEditAuto(autoRecord);
+        setEditDelay(captureDelay);
+        setEditDuration(captureDuration);
+        setShowSettings(true);
+    };
+
+    const saveSettings = () => {
+        const f = Math.max(1, Math.min(30, Number(editFps) || 15));
+        const d = Math.max(0, Number(editDelay) || 0);
+        const dur = Math.max(1, Number(editDuration) || 4);
+        setFps(f);
+        setAutoRecord(editAuto);
+        setCaptureDelay(d);
+        setCaptureDuration(dur);
+        setShowSettings(false);
     };
 
     const commitRename = () => {
@@ -149,57 +270,161 @@ const ClassCard = React.forwardRef(({
     };
 
     return (
-        <div className={styles.classCard} ref={ref}>
+        <div className={`${styles.classCard}${isDisabled ? ` ${styles.classCardDisabled}` : ''}`} ref={ref}>
             <div className={styles.classCardHeader} style={{background: color}}>
-                {editing ? (
-                    <input className={styles.nameEditInput} value={newName} autoFocus
-                        onChange={e => setNewName(e.target.value)}
-                        onKeyPress={e => e.key === 'Enter' && commitRename()}
-                        onBlur={commitRename}/>
-                ) : (
-                    <span className={styles.classCardTitle}>{label}</span>
-                )}
-                <button className={styles.classCardEditBtn} onClick={() => { setEditing(true); setNewName(label); }} title="Rename">&#9998;</button>
-                <div style={{position: 'relative'}}>
-                    <button className={styles.classCardMenuBtn} onClick={() => setMenu(m => !m)}>&#8942;</button>
+                <div className={styles.classCardNameRow}>
+                    {editing ? (
+                        <input className={styles.nameEditInput} value={newName} autoFocus
+                            onChange={e => setNewName(e.target.value)}
+                            onKeyPress={e => e.key === 'Enter' && commitRename()}
+                            onBlur={commitRename}/>
+                    ) : (
+                        <span className={styles.classCardTitle}>{label}</span>
+                    )}
+                    <button className={styles.classCardEditBtn} onClick={() => { setEditing(true); setNewName(label); }} title="Rename">
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                            <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                        </svg>
+                    </button>
+                </div>
+                {isDisabled && <span className={styles.disabledBadge}>DISABLED</span>}
+                <div style={{position: 'relative'}} ref={menuRef}>
+                    <button className={styles.classCardMenuBtn} onClick={() => menuOpen ? onCloseMenu() : onOpenMenu()}>&#8942;</button>
                     {menuOpen && (
                         <div className={styles.classCardMenu}>
-                            <button onClick={() => { setEditing(true); setNewName(label); setMenu(false); }}>Rename class</button>
-                            {canDelete && (
-                                <button className={styles.danger} onClick={() => { onDelete(label); setMenu(false); }}>Delete class</button>
+                            {confirmAction ? (
+                                <div className={styles.menuConfirm}>
+                                    <p className={styles.menuConfirmText}>
+                                        {confirmAction === 'deleteAll' ? 'Delete all samples?' : 'Delete this class?'}
+                                    </p>
+                                    <div className={styles.menuConfirmBtns}>
+                                        <button className={styles.menuConfirmYes} onClick={() => {
+                                            if (confirmAction === 'deleteAll') onDeleteAllSamples(label);
+                                            else onDelete(label);
+                                            onCloseMenu(); setConfirm(null);
+                                        }}>Delete</button>
+                                        <button className={styles.menuConfirmNo} onClick={() => setConfirm(null)}>Cancel</button>
+                                    </div>
+                                </div>
+                            ) : (
+                                <>
+                                    <button onClick={() => { setEditing(true); setNewName(label); onCloseMenu(); }}>Rename class</button>
+                                    <button onClick={() => { onToggleDisable(label); onCloseMenu(); }}>
+                                        {isDisabled ? '✓ Enable class' : 'Disable class'}
+                                    </button>
+                                    <div className={styles.menuDivider}/>
+                                    <button className={styles.danger} onClick={() => setConfirm('deleteAll')}>Delete all samples</button>
+                                    {canDelete && (
+                                        <button className={styles.danger} onClick={() => setConfirm('deleteClass')}>Delete class</button>
+                                    )}
+                                </>
                             )}
                         </div>
                     )}
                 </div>
             </div>
 
-            <div className={styles.classCardBody}>
+            <div className={`${styles.classCardBody}${showWebcam ? ` ${styles.classCardBodyCam}` : ''}`}>
                 <div className={styles.classCardLeft}>
-                    {showWebcam ? (
+                    {showSettings ? (
+                        <div className={styles.settingsPanel}>
+                            <div className={styles.settingsPanelHeader}>
+                                <span>Settings</span>
+                                <button className={styles.camBackBtn} onClick={() => setShowSettings(false)}>&#8592;</button>
+                            </div>
+                            <div className={styles.settingsForm}>
+                                <div className={styles.settingsRow}>
+                                    <label className={styles.settingsLabel}>FPS:</label>
+                                    <input
+                                        type="number" min="1" max="30"
+                                        className={styles.settingsInput}
+                                        value={editFps}
+                                        onChange={e => setEditFps(e.target.value)}
+                                    />
+                                </div>
+                                <div className={styles.settingsRow}>
+                                    <label className={styles.settingsLabel}>Hold to Record:</label>
+                                    <button
+                                        className={`${styles.toggleSwitch}${editAuto ? ` ${styles.toggleOn}` : ''}`}
+                                        onClick={() => setEditAuto(v => !v)}
+                                    >
+                                        <span className={styles.toggleThumb}/>
+                                    </button>
+                                </div>
+                                {editAuto && (<>
+                                    <div className={styles.settingsRow}>
+                                        <label className={styles.settingsLabel}>Delay:</label>
+                                        <input
+                                            type="number" min="0" max="10"
+                                            className={styles.settingsInput}
+                                            value={editDelay}
+                                            onChange={e => setEditDelay(e.target.value)}
+                                        />
+                                        <span className={styles.settingsUnit}>seconds</span>
+                                    </div>
+                                    <div className={styles.settingsRow}>
+                                        <label className={styles.settingsLabel}>Duration:</label>
+                                        <input
+                                            type="number" min="1" max="60"
+                                            className={styles.settingsInput}
+                                            value={editDuration}
+                                            onChange={e => setEditDuration(e.target.value)}
+                                        />
+                                        <span className={styles.settingsUnit}>seconds</span>
+                                    </div>
+                                </>)}
+                                <button className={styles.saveSettingsBtn} onClick={saveSettings}>Save Settings</button>
+                            </div>
+                        </div>
+                    ) : showWebcam ? (
                         <div className={styles.inlineWebcam}>
                             <div className={styles.inlineWebcamHeader}>
                                 <span className={styles.webcamSectionLabel}>Webcam</span>
-                                <button className={styles.camBackBtn} onClick={stopWebcam} title="Back to upload">&#8592;</button>
+                                <button className={styles.camBackBtn} onClick={stopWebcam} title="Back">&#8592;</button>
                             </div>
-                            {camErr ? (
-                                <p style={{color: '#e53935', fontSize: 11, padding: '4px 0'}}>{camErr}</p>
-                            ) : (
+                            {camErr ? (() => {
+                                const [title, msg] = camErr.split('|||');
+                                return (
+                                    <div className={styles.resourceError}>
+                                        <div className={styles.resourceErrorIcon}>!</div>
+                                        <p className={styles.resourceErrorTitle}>{title}</p>
+                                        <p className={styles.resourceErrorMsg}>{msg}</p>
+                                        <button className={styles.resourceRetryBtn} onClick={startWebcam}>Try Again</button>
+                                    </div>
+                                );
+                            })() : (
                                 <video ref={videoRef} autoPlay playsInline muted className={styles.inlineVideo}/>
                             )}
-                            <div className={styles.holdRow}>
-                                <button
-                                    className={styles.holdBtn}
-                                    onMouseDown={holdStart}
-                                    onMouseUp={holdEnd}
-                                    onMouseLeave={holdEnd}
-                                    onTouchStart={holdStart}
-                                    onTouchEnd={holdEnd}
-                                    disabled={!!camErr}
-                                >
-                                    Hold to Record
-                                </button>
-                                <button className={styles.gearBtn} title="Settings">&#9881;</button>
-                            </div>
+                            {!camErr && (
+                                <div className={styles.holdRow}>
+                                    {autoRecord ? (
+                                        <button
+                                            className={`${styles.holdBtn}${autoRunning ? ` ${styles.holdBtnRecording}` : ''}`}
+                                            onClick={startAutoRecord}
+                                            disabled={autoRunning || autoCountdown > 0}
+                                        >
+                                            {autoCountdown > 0
+                                                ? `Starting in ${autoCountdown}s…`
+                                                : autoRunning
+                                                    ? '● Recording…'
+                                                    : `Record ${captureDuration} Seconds`}
+                                        </button>
+                                    ) : (
+                                        <button
+                                            className={styles.holdBtn}
+                                            onMouseDown={holdStart}
+                                            onMouseUp={holdEnd}
+                                            onMouseLeave={holdEnd}
+                                            onTouchStart={holdStart}
+                                            onTouchEnd={holdEnd}
+                                        >
+                                            Hold to Record
+                                        </button>
+                                    )}
+                                    <button className={styles.gearBtn} title="Settings" onClick={openSettings}>&#9881;</button>
+                                </div>
+                            )}
                         </div>
                     ) : (
                         <>
@@ -222,7 +447,6 @@ const ClassCard = React.forwardRef(({
                                     Webcam
                                 </button>
                             </div>
-                            {camErr && <p style={{color: '#e53935', fontSize: 11, marginTop: 4}}>{camErr}</p>}
                         </>
                     )}
                 </div>
@@ -231,20 +455,16 @@ const ClassCard = React.forwardRef(({
                     <p className={styles.sampleCountLabel}>{samples.length} Image Sample{samples.length !== 1 ? 's' : ''}</p>
                     {thumbData.length > 0 && (
                         <div className={styles.thumbnailGrid}>
-                            {thumbData.map((item, i) => {
-                                const isLast = i === MAX_THUMBS - 1 && samples.length > MAX_THUMBS;
-                                return (
-                                    <div key={item.id} className={styles.thumb}>
-                                        <img src={item.src} alt=""/>
-                                        <button
-                                            className={styles.thumbDeleteBtn}
-                                            onClick={e => { e.stopPropagation(); onDeleteSample(label, item.id); }}
-                                            title="Remove sample"
-                                        >&#10005;</button>
-                                        {isLast && <div className={styles.thumbMore}>+{samples.length - MAX_THUMBS}</div>}
-                                    </div>
-                                );
-                            })}
+                            {thumbData.map((item) => (
+                                <div key={item.id} className={styles.thumb}>
+                                    <img src={item.src} alt=""/>
+                                    <button
+                                        className={styles.thumbDeleteBtn}
+                                        onClick={e => { e.stopPropagation(); onDeleteSample(label, item.id); }}
+                                        title="Remove sample"
+                                    >&#10005;</button>
+                                </div>
+                            ))}
                         </div>
                     )}
                 </div>
@@ -254,16 +474,25 @@ const ClassCard = React.forwardRef(({
 });
 ClassCard.displayName = 'ClassCard';
 ClassCard.propTypes = {
-    label:            PropTypes.string.isRequired,
-    colorIdx:         PropTypes.number.isRequired,
-    samples:          PropTypes.array.isRequired,
-    onAddImages:      PropTypes.func.isRequired,
-    onDeleteSample:   PropTypes.func.isRequired,
-    onRename:         PropTypes.func.isRequired,
-    onDelete:         PropTypes.func.isRequired,
-    canDelete:        PropTypes.bool.isRequired,
-    projectId:        PropTypes.string.isRequired,
-    selectedDeviceId: PropTypes.string
+    label:              PropTypes.string.isRequired,
+    colorIdx:           PropTypes.number.isRequired,
+    samples:            PropTypes.array.isRequired,
+    onAddImages:        PropTypes.func.isRequired,
+    onDeleteSample:     PropTypes.func.isRequired,
+    onDeleteAllSamples: PropTypes.func.isRequired,
+    onRename:           PropTypes.func.isRequired,
+    onDelete:           PropTypes.func.isRequired,
+    canDelete:          PropTypes.bool.isRequired,
+    onToggleDisable:    PropTypes.func.isRequired,
+    isDisabled:         PropTypes.bool.isRequired,
+    projectId:          PropTypes.string.isRequired,
+    selectedDeviceId:   PropTypes.string,
+    menuOpen:           PropTypes.bool.isRequired,
+    onOpenMenu:         PropTypes.func.isRequired,
+    onCloseMenu:        PropTypes.func.isRequired,
+    isWebcamActive:     PropTypes.bool.isRequired,
+    onRequestWebcam:    PropTypes.func.isRequired,
+    onReleaseWebcam:    PropTypes.func.isRequired
 };
 
 /* ──────────────────────────────────────────────
@@ -439,7 +668,20 @@ TestingPanel.propTypes = {
 /* ──────────────────────────────────────────────
    Main training page
 ────────────────────────────────────────────── */
-const MLTrainingPage = ({project, onBack, onUseInBlocks, onUpdateProject}) => {
+const MLTrainingPage = ({project, onBack, onUseInBlocks, onUpdateProject, onNewProject, onNewMLProject, onOpenMLProject}) => {
+    if (project.type === 'sounds') {
+        return (
+            <AudioTrainingPage
+                project={project}
+                onBack={onBack}
+                onUseInBlocks={onUseInBlocks}
+                onUpdateProject={onUpdateProject}
+                onNewProject={onNewProject}
+                onNewMLProject={onNewMLProject}
+                onOpenMLProject={onOpenMLProject}
+            />
+        );
+    }
     const [labels,         setLabels]      = useState(project.labels || ['Class 1', 'Class 2']);
     const [trainingData,   setData]        = useState({});
     const [loadingData,    setLoadingData] = useState(true);
@@ -452,9 +694,30 @@ const MLTrainingPage = ({project, onBack, onUseInBlocks, onUpdateProject}) => {
     const [epochs,         setEpochs]      = useState(20);
     const [batchSize,      setBatchSize]   = useState(16);
     const [learningRate,   setLR]          = useState(0.001);
+    const [epochMetrics,   setEpochMetrics] = useState([]);
+    const [showReport,     setShowReport]  = useState(false);
+    const [reportData,     setReportData]  = useState(null);
+    /* savedReport persists the last completed report so the button stays enabled
+       even after adding new images — cleared only when a new training run starts */
+    const [savedReport,    setSavedReport] = useState(null);
 
-    const [cameras,     setCameras]    = useState([]);
-    const [selectedCam, setSelectedCam] = useState('');
+    const [cameras,          setCameras]         = useState([]);
+    const [selectedCam,      setSelectedCam]      = useState('');
+    const [activeWebcamLabel, setActiveWebcamLabel] = useState(null);
+    const [openMenuLabel,    setOpenMenuLabel]    = useState(null);
+    const [fileMenuOpen,  setFileMenuOpen]  = useState(false);
+    const fileMenuRef = useRef(null);
+
+    useEffect(() => {
+        if (!fileMenuOpen) return;
+        const handler = e => {
+            if (fileMenuRef.current && !fileMenuRef.current.contains(e.target)) {
+                setFileMenuOpen(false);
+            }
+        };
+        document.addEventListener('mousedown', handler);
+        return () => document.removeEventListener('mousedown', handler);
+    }, [fileMenuOpen]);
 
     const classifierRef = useRef(null);
     const mobileNetRef  = useRef(null);
@@ -552,6 +815,19 @@ const MLTrainingPage = ({project, onBack, onUseInBlocks, onUpdateProject}) => {
         setTrained(false);
     }, []);
 
+    const deleteAllSamples = useCallback(label => {
+        setData(d => ({...d, [label]: []}));
+        setTrained(false);
+    }, []);
+
+    const [disabledLabels, setDisabledLabels] = useState([]);
+    const toggleDisableClass = useCallback(label => {
+        setDisabledLabels(prev =>
+            prev.includes(label) ? prev.filter(l => l !== label) : [...prev, label]
+        );
+        setTrained(false);
+    }, []);
+
     const addClass = () => {
         let n = labels.length + 1;
         while (labels.includes(`Class ${n}`)) n++;
@@ -584,30 +860,40 @@ const MLTrainingPage = ({project, onBack, onUseInBlocks, onUpdateProject}) => {
 
     /* ── Train model ── */
     const trainModel = async () => {
-        const total = labels.reduce((s, l) => s + (trainingData[l] || []).length, 0);
-        if (total < 2 || !labels.every(l => (trainingData[l] || []).length >= 1)) {
-            setStatus('Every class needs at least 1 image.');
+        const activeLabels = labels.filter(l => !disabledLabels.includes(l));
+        const total = activeLabels.reduce((s, l) => s + (trainingData[l] || []).length, 0);
+        if (activeLabels.length < 2 || !activeLabels.every(l => (trainingData[l] || []).length >= 10)) {
+            setStatus('Need at least 2 enabled classes, each with at least 10 images.');
             return;
         }
         setTraining(true);
         setTrainPct(0);
         setAccPoints([{x: 0, y: 0}]);
+        setEpochMetrics([]);
+        setReportData(null);
+        setSavedReport(null);
         setStatus('Loading MobileNetV1…');
 
         try {
             const net = await getMobileNet(s => setStatus(s));
             mobileNetRef.current = net;
 
+            const collectedMetrics = [];
             const classifier = await trainImages(
-                labels, trainingData, project.id,
+                activeLabels, trainingData, project.id,
                 s => setStatus(s),
                 pct => setTrainPct(pct),
                 {
                     epochs,
                     batchSize,
                     learningRate,
-                    onEpochEnd: (epochIdx, acc) => {
-                        setAccPoints(pts => [...pts, {x: epochIdx + 1, y: acc}]);
+                    onEpochEnd: (epochIdx, metrics) => {
+                        const {trainAcc, valAcc} = metrics;
+                        const displayAcc = valAcc || trainAcc;
+                        const pt = {epoch: epochIdx + 1, ...metrics};
+                        collectedMetrics.push(pt);
+                        setAccPoints(pts => [...pts, {x: epochIdx + 1, y: displayAcc}]);
+                        setEpochMetrics(pts => [...pts, pt]);
                     }
                 }
             );
@@ -615,7 +901,17 @@ const MLTrainingPage = ({project, onBack, onUseInBlocks, onUpdateProject}) => {
             classifierRef.current = classifier;
             setTrained(true);
             setTrainPct(100);
-            setStatus('Training Complete');
+            setStatus('Evaluating model…');
+
+            // Run evaluation for report (non-blocking)
+            evaluateImageModel(activeLabels, trainingData, project.id, classifier, net,
+                pct => setStatus(`Evaluating… ${pct}%`)
+            ).then(result => {
+                setReportData(result);
+                setSavedReport({epochMetrics: collectedMetrics, reportData: result, labels: activeLabels});
+                setStatus('Training Complete');
+            }).catch(() => setStatus('Training Complete'));
+
         } catch (err) {
             setStatus(`Error: ${err.message}`);
             console.error('[ML Train]', err);
@@ -649,32 +945,8 @@ const MLTrainingPage = ({project, onBack, onUseInBlocks, onUpdateProject}) => {
         });
     };
 
-    /* ── Export model: deploy + download manifest JSON ── */
-    const handleExportModel = async () => {
-        if (!classifierRef.current) return;
-        deployModel();
-        try {
-            const payload = JSON.stringify({
-                version:     2,
-                type:        'images',
-                backbone:    'mobilenet_v1_0.25_224',
-                labels,
-                projectName: project.name,
-                savedAt:     new Date().toISOString()
-            }, null, 2);
-            const blob = new Blob([payload], {type: 'application/json'});
-            const url  = URL.createObjectURL(blob);
-            const a    = document.createElement('a');
-            a.href = url;
-            a.download = `${project.name || 'ml-model'}.json`;
-            a.click();
-            URL.revokeObjectURL(url);
-        } catch (e) { console.error('[Export]', e); }
-        onUseInBlocks();
-    };
-
-    /* ── Use in Blocks ── */
-    const handleUseInBlocks = () => {
+    /* ── Export: deploy model to blocks and navigate ── */
+    const handleExportModel = () => {
         deployModel();
         onUseInBlocks();
     };
@@ -726,37 +998,57 @@ const MLTrainingPage = ({project, onBack, onUseInBlocks, onUpdateProject}) => {
         return () => window.removeEventListener('resize', recalcCurves);
     }, [recalcCurves]);
 
+    const activeLabels = labels.filter(l => !disabledLabels.includes(l));
     const canTrain = !isTraining &&
-        labels.every(l => (trainingData[l] || []).length >= 1) &&
-        labels.reduce((s, l) => s + (trainingData[l] || []).length, 0) >= 2;
+        activeLabels.length >= 2 &&
+        activeLabels.every(l => (trainingData[l] || []).length >= 10);
 
     if (loadingData) {
-        return (
-            <div className={styles.page} style={{alignItems: 'center', justifyContent: 'center', background: '#ebebeb'}}>
-                <p style={{color: '#666', fontSize: 15}}>Loading project data…</p>
-            </div>
-        );
+        return <Loader messageId="gui.loader.headline" />;
     }
 
     return (
+        <>
         <div className={styles.page}>
             {/* Header */}
             <div className={styles.header}>
-                <span style={{fontSize: 22}}>🐻</span>
+                <img
+                    src={openblockLogo}
+                    alt="RoboCoders Studio"
+                    className={styles.headerLogo}
+                    draggable={false}
+                />
                 <span className={styles.headerTitle}>Machine Learning Environment</span>
                 <nav className={styles.headerNav}>
-                    <span>File</span>
-                    <span>Tutorials</span>
-                    <span>Help</span>
+                    <div className={styles.fileMenuWrap} ref={fileMenuRef}>
+                        <button className={styles.navBtn} onClick={() => setFileMenuOpen(o => !o)}>File</button>
+                        {fileMenuOpen && (
+                            <div className={styles.navDropdown}>
+                                <button onClick={() => { setFileMenuOpen(false); (onNewProject || onBack)(); }}>New</button>
+                                <button onClick={() => { setFileMenuOpen(false); (onNewMLProject || onBack)(); }}>New ML Project</button>
+                                <button onClick={() => { setFileMenuOpen(false); (onOpenMLProject || onBack)(); }}>Open ML Project</button>
+                                <button onClick={() => { setFileMenuOpen(false); document.documentElement.requestFullscreen && document.documentElement.requestFullscreen(); }}>Full Screen Recording</button>
+                                <button onClick={() => setFileMenuOpen(false)}>Examples</button>
+                            </div>
+                        )}
+                    </div>
+                    <button className={styles.navBtn}>Tutorials</button>
+                    <button className={styles.navBtn}>Help</button>
                 </nav>
+                <div className={styles.headerSpacer} />
                 <button className={styles.headerBackBtn} onClick={onBack}>&#8592; Back</button>
             </div>
 
             {/* Sub-header */}
             <div className={styles.subHeader}>
-                <div className={styles.subHeaderIcon}>🖼</div>
                 <span className={styles.subHeaderType}>Image Classifier</span>
-                <span className={styles.infoIcon} title="Train an image classification model.">i</span>
+                <span className={styles.infoIcon} title="Train a model to recognise images from your webcam or uploaded photos — then use it in your Blocks project.">
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="#9966FF" xmlns="http://www.w3.org/2000/svg">
+                        <circle cx="12" cy="12" r="11"/>
+                        <circle cx="12" cy="8" r="1.3" fill="white"/>
+                        <rect x="10.7" y="11" width="2.6" height="6" rx="1.3" fill="white"/>
+                    </svg>
+                </span>
                 <div className={styles.divider}/>
                 <span className={styles.projectNamePill}>{project.name}</span>
                 <div className={styles.divider}/>
@@ -795,10 +1087,19 @@ const MLTrainingPage = ({project, onBack, onUseInBlocks, onUpdateProject}) => {
                             projectId={project.id}
                             selectedDeviceId={selectedCam}
                             canDelete={labels.length > 2}
+                            isDisabled={disabledLabels.includes(lbl)}
+                            menuOpen={openMenuLabel === lbl}
+                            onOpenMenu={() => setOpenMenuLabel(lbl)}
+                            onCloseMenu={() => setOpenMenuLabel(null)}
+                            isWebcamActive={activeWebcamLabel === lbl}
+                            onRequestWebcam={() => setActiveWebcamLabel(lbl)}
+                            onReleaseWebcam={() => setActiveWebcamLabel(null)}
                             onAddImages={addImages}
                             onDeleteSample={deleteSample}
+                            onDeleteAllSamples={deleteAllSamples}
                             onRename={renameClass}
                             onDelete={deleteClass}
+                            onToggleDisable={toggleDisableClass}
                         />
                     ))}
                     <button className={styles.addClassCard} onClick={addClass}>+ Add Class</button>
@@ -810,12 +1111,12 @@ const MLTrainingPage = ({project, onBack, onUseInBlocks, onUpdateProject}) => {
                     <div className={styles.trainingCard} ref={trainCardRef}>
                         <div className={styles.trainingHeader}>
                             <span>Training</span>
-                            <div className={styles.langToggle}>
-                                <span>🐍</span>
-                                <div className={styles.langToggleSwitch}/>
-                                <span style={{color: '#ffe000', fontWeight: 700}}>JS</span>
-                            </div>
                         </div>
+                        {disabledLabels.length > 0 && (
+                            <div className={styles.activeClassInfo}>
+                                {activeLabels.length} / {labels.length} classes active
+                            </div>
+                        )}
                         <div className={styles.trainingBody}>
                             {/* Accuracy chart */}
                             {accuracyPoints.length >= 2 && (
@@ -845,16 +1146,10 @@ const MLTrainingPage = ({project, onBack, onUseInBlocks, onUpdateProject}) => {
                                 </button>
                             ) : (
                                 <button className={styles.trainModelBtn} onClick={trainModel} disabled={!canTrain}>
-                                    {isTraining ? '⏳ Training…' : '⚡ Train Model'}
+                                    {isTraining ? <Spinner small level="info" /> : '⚡ Train Model'}
                                 </button>
                             )}
 
-                            {/* Use in Blocks */}
-                            {isTrained && (
-                                <button className={styles.useInBlocksBtn} onClick={handleUseInBlocks}>
-                                    🧩 Use in Blocks
-                                </button>
-                            )}
                         </div>
 
                         {/* Advanced accordion */}
@@ -867,20 +1162,25 @@ const MLTrainingPage = ({project, onBack, onUseInBlocks, onUpdateProject}) => {
                                 <div className={styles.advancedRow}>
                                     <span>Epochs</span>
                                     <input className={styles.advancedInput} type="number" value={epochs} min={1} max={200}
-                                        onChange={e => setEpochs(Number(e.target.value))}/>
+                                        onChange={e => setEpochs(Number(e.target.value))}
+                                        onBlur={e => setEpochs(Math.max(1, Math.min(200, Number(e.target.value) || 20)))}/>
                                 </div>
                                 <div className={styles.advancedRow}>
                                     <span>Batch Size</span>
                                     <input className={styles.advancedInput} type="number" value={batchSize} min={1} max={512}
-                                        onChange={e => setBatchSize(Number(e.target.value))}/>
+                                        onChange={e => setBatchSize(Number(e.target.value))}
+                                        onBlur={e => setBatchSize(Math.max(1, Math.min(512, Number(e.target.value) || 16)))}/>
                                 </div>
                                 <div className={styles.advancedRow}>
                                     <span>Learning Rate</span>
-                                    <input className={styles.advancedInput} type="number" value={learningRate} step="0.0001" min={0.0001}
-                                        onChange={e => setLR(Number(e.target.value))}/>
+                                    <input className={styles.advancedInput} type="number" value={learningRate} step="0.0001" min={0.0001} max={1}
+                                        onChange={e => setLR(Number(e.target.value))}
+                                        onBlur={e => setLR(Math.max(0.0001, Math.min(1, Number(e.target.value) || 0.001)))}/>
                                 </div>
                                 <div className={styles.advancedBtnsRow}>
-                                    <button className={styles.trainReportBtn} onClick={() => alert(`Model: Image Classifier\nClasses: ${labels.join(', ')}\nSamples: ${labels.reduce((s, l) => s + (trainingData[l] || []).length, 0)}\nStatus: ${isTrained ? 'Trained' : 'Not trained'}`)}>
+                                    <button className={styles.trainReportBtn}
+                                        disabled={!savedReport}
+                                        onClick={() => setShowReport(true)}>
                                         Train Report
                                     </button>
                                     <button className={styles.resetBtn} onClick={() => { setEpochs(20); setBatchSize(16); setLR(0.001); }}>
@@ -914,14 +1214,27 @@ const MLTrainingPage = ({project, onBack, onUseInBlocks, onUpdateProject}) => {
                 </div>
             </div>
         </div>
+
+        {showReport && savedReport && (
+            <TrainReportModal
+                onClose={() => setShowReport(false)}
+                epochMetrics={savedReport.epochMetrics}
+                reportData={savedReport.reportData}
+                labels={savedReport.labels}
+            />
+        )}
+        </>
     );
 };
 
 MLTrainingPage.propTypes = {
-    project:         PropTypes.object.isRequired,
-    onBack:          PropTypes.func.isRequired,
-    onUseInBlocks:   PropTypes.func.isRequired,
-    onUpdateProject: PropTypes.func.isRequired
+    project:          PropTypes.object.isRequired,
+    onBack:           PropTypes.func.isRequired,
+    onUseInBlocks:    PropTypes.func.isRequired,
+    onUpdateProject:  PropTypes.func.isRequired,
+    onNewProject:     PropTypes.func,
+    onNewMLProject:   PropTypes.func,
+    onOpenMLProject:  PropTypes.func
 };
 
 export default MLTrainingPage;

@@ -205,6 +205,7 @@ const HomeScreen = ({onSelectMode}) => {
     /* ── Home screen ── */
     return (
         <div className={styles.homeWrapper}>
+            <button className={styles.backToBlocksBtn} onClick={() => onSelectMode('blocks')}>&#8592; Back</button>
             <div className={styles.card}>
                 <h1 className={styles.heading}>What would you like to do?</h1>
 

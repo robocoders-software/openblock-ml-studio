@@ -195,9 +195,10 @@ export const trainImages = async (
 
     /* ── Phase 1 of 2: feature extraction (0–50 %) ── */
     onStatus && onStatus('Extracting MobileNetV1 features…');
-    const embeddings = [];
-    const labelIdxs  = [];
+    const embRows   = [];   // each entry: Float32Array of length embDim
+    const labelIdxs = [];
     let done = 0;
+    let embDim = 256;
 
     for (let i = 0; i < labels.length; i++) {
         for (const ex of (trainingData[labels[i]] || [])) {
@@ -208,8 +209,11 @@ export const trainImages = async (
             const img = await loadImg(src);
             if (!img) { done++; onProgress && onProgress(Math.round(done / total * 50)); continue; }
 
-            const emb = net.infer(img, true);   // [1, 256] — caller owns, must dispose
-            embeddings.push(emb);
+            const emb  = net.infer(img, true);  // [1, embDim]
+            embDim     = emb.shape[emb.shape.length - 1];
+            const data = await emb.data();       // read to CPU Float32Array
+            emb.dispose();
+            embRows.push(data);
             labelIdxs.push(i);
 
             done++;
@@ -217,12 +221,12 @@ export const trainImages = async (
         }
     }
 
-    if (embeddings.length === 0) throw new Error('No valid training images could be loaded.');
+    if (embRows.length === 0) throw new Error('No valid training images could be loaded.');
 
-    /* ── Stack into training tensors ── */
-    const xs = tf.concat(embeddings, 0);      // [N, 256]
-    embeddings.forEach(e => e.dispose());
-    const embDim = xs.shape[1];               // 256
+    /* ── Stack into training tensors (plain JS array → single tensor, no WebGL concat) ── */
+    const flat = new Float32Array(embRows.length * embDim);
+    embRows.forEach((row, r) => flat.set(row, r * embDim));
+    const xs = tf.tensor2d(flat, [embRows.length, embDim]);  // [N, embDim]
 
     const ys = tf.oneHot(tf.tensor1d(labelIdxs, 'int32'), labels.length); // [N, C]
 
@@ -236,23 +240,26 @@ export const trainImages = async (
         metrics:   ['accuracy']
     });
 
-    const useVal      = xs.shape[0] >= 8;
-    const valSplit    = useVal ? 0.15 : 0;
-    const effectiveBs = Math.min(batchSize, xs.shape[0]);
+    const safeEpochs  = Math.max(1, Math.round(epochs));
+    const valSplit    = Math.min(0.5, Math.max(0.15, 1.0 / xs.shape[0]));
+    const trainCount  = Math.floor(xs.shape[0] * (1 - valSplit));
+    const effectiveBs = Math.max(1, Math.min(Math.max(1, Math.round(batchSize)), trainCount));
 
     await head.fit(xs, ys, {
-        epochs,
-        batchSize: effectiveBs,
-        shuffle:   true,
+        epochs:          safeEpochs,
+        batchSize:       effectiveBs,
+        shuffle:         true,
         validationSplit: valSplit,
         callbacks: {
             onEpochEnd: (epoch, logs) => {
-                const acc  = useVal ? (logs.val_acc || logs.val_accuracy || logs.acc || logs.accuracy || 0)
-                                    : (logs.acc || logs.accuracy || 0);
-                const loss = logs.loss || 0;
-                onStatus && onStatus(`Epoch ${epoch + 1}/${epochs}  acc: ${(acc * 100).toFixed(1)}%  loss: ${loss.toFixed(4)}`);
-                onProgress && onProgress(50 + Math.round(((epoch + 1) / epochs) * 50));
-                onEpochEnd && onEpochEnd(epoch, acc);
+                const valAcc   = logs.val_acc      || logs.val_accuracy  || 0;
+                const trainAcc = logs.acc          || logs.accuracy      || 0;
+                const valLoss  = logs.val_loss     || 0;
+                const trainLoss = logs.loss        || 0;
+                const displayAcc = valAcc || trainAcc;
+                onStatus && onStatus(`Epoch ${epoch + 1}/${safeEpochs}  acc: ${(displayAcc * 100).toFixed(1)}%  loss: ${trainLoss.toFixed(4)}`);
+                onProgress && onProgress(50 + Math.round(((epoch + 1) / safeEpochs) * 50));
+                onEpochEnd && onEpochEnd(epoch, {trainAcc, valAcc, trainLoss, valLoss});
             }
         }
     });
@@ -265,6 +272,59 @@ export const trainImages = async (
     await idbPut('models', `head-labels:${projectId}`, JSON.stringify(labels));
 
     return wrapHead(head, labels);
+};
+
+/* ── Evaluate image classifier on training data → confusion matrix + per-class metrics ── */
+export const evaluateImageModel = async (labels, trainingData, projectId, classifier, net, onProgress) => {
+    if (!classifier || !net) return null;
+    const total = labels.reduce((s, l) => s + (trainingData[l] || []).length, 0);
+    if (total === 0) return null;
+
+    // confusion[actual][predicted] = count
+    const confusion = {};
+    const samples   = {};   // label → [{src, predicted, correct}]
+    for (const l of labels) {
+        confusion[l] = {};
+        samples[l]   = [];
+        for (const p of labels) confusion[l][p] = 0;
+    }
+
+    let done = 0;
+    for (const actual of labels) {
+        for (const ex of (trainingData[actual] || [])) {
+            let src = ex.data && ex.data.startsWith('data:') ? ex.data : null;
+            if (!src) src = await getImageFromIDB(projectId, ex.id);
+            done++;
+            onProgress && onProgress(Math.round(done / total * 100));
+            if (!src) continue;
+
+            const img = await loadImg(src);
+            if (!img) continue;
+
+            const logits   = net.infer(img, true);
+            const res      = await classifier.predictClass(logits);
+            logits.dispose();
+
+            const predIdx  = res.classIndex;
+            const predicted = labels[predIdx] || labels[0];
+            confusion[actual][predicted] = (confusion[actual][predicted] || 0) + 1;
+            samples[actual].push({src, predicted, correct: predicted === actual});
+        }
+    }
+
+    // Compute per-class metrics
+    const classMetrics = labels.map(l => {
+        const tp = confusion[l][l] || 0;
+        const fnCount = labels.reduce((s, p) => p !== l ? s + (confusion[l][p] || 0) : s, 0);
+        const fp = labels.reduce((s, a) => a !== l ? s + (confusion[a][l] || 0) : s, 0);
+        const total_l = tp + fnCount;
+        const precision = (tp + fp) > 0 ? tp / (tp + fp) : 0;
+        const recall    = total_l > 0   ? tp / total_l    : 0;
+        const accuracy  = total_l > 0   ? tp / total_l    : 0;
+        return {label: l, accuracy, precision, recall, samples: total_l, tp, fp, fn: fnCount};
+    });
+
+    return {confusion, classMetrics, samples};
 };
 
 /* ── Load persisted image classifier ── */
@@ -307,3 +367,167 @@ export const predictImages = async (imgEl, classifier, net, labels) => {
 
 /* ── Re-export IDB helpers ── */
 export { saveImageToIDB, getImageFromIDB, deleteProjectIDB } from './idb.js';
+
+/* ════════════════════════════════════════════════════════════════
+   Audio / Speech-Commands Engine
+   Uses @tensorflow-models/speech-commands loaded from CDN as UMD.
+   Transfer-learning pipeline (matches ML for Kids approach):
+     1. Base recognizer  – pre-trained BROWSER_FFT speech-commands model
+     2. Transfer recognizer – per-project transfer-learning head
+     3. Persistence – tf.io IndexedDB via transferRecognizer.save/load
+   ════════════════════════════════════════════════════════════════ */
+
+const SPEECH_COMMANDS_CDN =
+    'https://cdn.jsdelivr.net/npm/@tensorflow-models/speech-commands@0.5.4/dist/speech-commands.min.js';
+
+let _scLib            = null;   // window.speechCommands
+let _baseRecognizer   = null;   // singleton base recognizer
+let _transferRec      = null;   // current project's transfer recognizer
+let _soundProjectId   = null;
+let _soundModelInfo   = null;   // { numFrames, fftSize }
+
+const loadSpeechCommandsLib = async () => {
+    if (_scLib) return _scLib;
+    if (typeof window !== 'undefined' && window.speechCommands) {
+        _scLib = window.speechCommands;
+        return _scLib;
+    }
+    const tf = await getTF();
+    // speech-commands UMD needs window.tf
+    if (typeof window !== 'undefined') window.tf = tf;
+    await new Promise((resolve, reject) => {
+        const s = document.createElement('script');
+        s.src = SPEECH_COMMANDS_CDN;
+        s.onload = resolve;
+        s.onerror = () => reject(new Error(
+            'Could not load speech-commands library. Check your internet connection.'
+        ));
+        document.head.appendChild(s);
+    });
+    _scLib = window.speechCommands;
+    if (!_scLib) throw new Error('speech-commands did not initialise correctly.');
+    return _scLib;
+};
+
+/* ── Public: init base + transfer recognizer ── */
+export const initSpeechCommands = async (projectId, onStatus) => {
+    onStatus && onStatus('Loading speech-commands library…');
+    const sc = await loadSpeechCommandsLib();
+
+    if (!_baseRecognizer) {
+        onStatus && onStatus('Loading audio base model…');
+        _baseRecognizer = sc.create('BROWSER_FFT');
+        await _baseRecognizer.ensureModelLoaded();
+    }
+
+    if (_soundProjectId !== projectId || !_transferRec) {
+        _transferRec    = _baseRecognizer.createTransfer('project-' + projectId);
+        _soundProjectId = projectId;
+        const shape     = _transferRec.modelInputShape();
+        _soundModelInfo = {numFrames: shape[1], fftSize: shape[2]};
+    }
+
+    onStatus && onStatus('');
+    return {recognizer: _transferRec, modelInfo: _soundModelInfo};
+};
+
+export const getSoundModelInfo = () => _soundModelInfo;
+
+/* ── Public: record one audio example (~1 second) ── */
+export const collectAudioExample = async label => {
+    if (!_transferRec) throw new Error('Audio engine not ready. Call initSpeechCommands first.');
+    return _transferRec.collectExample(label);
+};
+
+/* ── Public: train transfer model from stored spectrogram data ── */
+export const trainSounds = async (labels, trainingData, projectId, onStatus, onProgress, config = {}) => {
+    const {epochs: rawEpochs = 50, batchSize: rawBatch = 32, onEpochEnd: epochCb} = config;
+    const epochs    = Math.max(1, Math.round(rawEpochs));
+    const batchSize = Math.max(1, Math.round(rawBatch));
+    if (!_transferRec || !_soundModelInfo) throw new Error('Audio engine not initialised.');
+
+    // Clear dataset and re-add all stored examples
+    _transferRec.dataset.clear();
+    try { _transferRec.dataset.label2Ids = {}; } catch (_) {}
+    _transferRec.words = null;
+
+    onStatus && onStatus('Loading audio samples…');
+    let added = 0;
+    for (const label of labels) {
+        for (const sample of (trainingData[label] || [])) {
+            if (!sample.spectrogramData) continue;
+            _transferRec.dataset.addExample({
+                label,
+                spectrogram: {
+                    frameSize: sample.frameSize || _soundModelInfo.fftSize,
+                    data: new Float32Array(sample.spectrogramData)
+                }
+            });
+            added++;
+        }
+    }
+    if (added === 0) throw new Error('No audio samples found. Record some samples first.');
+
+    _transferRec.collateTransferWords();
+
+    onStatus && onStatus('Training audio model…');
+    const valSplitAudio  = Math.min(0.5, Math.max(0.15, 1.0 / added));
+    const trainCountAudio = Math.floor(added * (1 - valSplitAudio));
+    const effectiveBsAudio = Math.max(1, Math.min(batchSize, trainCountAudio));
+    await _transferRec.train({
+        epochs,
+        batchSize: effectiveBsAudio,
+        validationSplit: valSplitAudio,
+        windowHopRatio:  0.25,
+        optimizer:       'sgd',
+        callback: {
+            onEpochEnd: async (epoch, logs) => {
+                const pct = Math.round(((epoch + 1) / epochs) * 100);
+                onProgress && onProgress(pct);
+                const acc = logs.val_acc    !== undefined ? logs.val_acc
+                          : logs.val_accuracy !== undefined ? logs.val_accuracy
+                          : logs.acc          !== undefined ? logs.acc
+                          : (logs.accuracy || 0);
+                onStatus && onStatus(`Epoch ${epoch + 1}/${epochs}  acc: ${(acc * 100).toFixed(1)}%`);
+                epochCb && epochCb(epoch, acc);
+            }
+        }
+    });
+
+    await _transferRec.save(`indexeddb://ml-sound-${projectId}`);
+    await idbPut('models', `sound-labels:${projectId}`, JSON.stringify(labels));
+    onStatus && onStatus('Training Complete');
+    onProgress && onProgress(100);
+};
+
+/* ── Public: restore saved model ── */
+export const loadSoundClassifier = async (projectId, labels) => {
+    try {
+        if (!_transferRec) return null;
+        await _transferRec.load(`indexeddb://ml-sound-${projectId}`);
+        _transferRec.words = Array.from(labels).sort();
+        return _transferRec;
+    } catch (_) {
+        return null;
+    }
+};
+
+/* ── Public: live mic classification ── */
+export const startListening = async (callback, options = {}) => {
+    if (!_transferRec) throw new Error('Audio engine not ready.');
+    return _transferRec.listen(result => {
+        const lbls = _transferRec.wordLabels();
+        if (!lbls) return;
+        const matches = lbls.map((lbl, i) => ({
+            label: lbl,
+            prob: (result.scores[i] || 0) * 100
+        })).sort((a, b) => b.prob - a.prob);
+        callback(matches);
+    }, {probabilityThreshold: options.threshold || 0.5});
+};
+
+export const stopListening = async () => {
+    if (_transferRec) {
+        try { await _transferRec.stopListening(); } catch (_) {}
+    }
+};

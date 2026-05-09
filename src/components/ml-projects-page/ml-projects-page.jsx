@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import styles from './ml-projects-page.css';
+import openblockLogo from '../openblock-logo.svg';
 
 const TYPE_LABELS = {
     images: 'Image Classifier',
@@ -11,6 +12,19 @@ const TYPE_LABELS = {
 const MLProjectsPage = ({ projects = [], onBack, onCreate, onOpen, onDelete, onImport, onExport }) => {
     const [search, setSearch] = useState('');
     const [menuOpenId, setMenuOpenId] = useState(null);
+    const [fileMenuOpen, setFileMenuOpen] = useState(false);
+    const fileMenuRef = useRef(null);
+
+    useEffect(() => {
+        if (!fileMenuOpen) return;
+        const handler = e => {
+            if (fileMenuRef.current && !fileMenuRef.current.contains(e.target)) {
+                setFileMenuOpen(false);
+            }
+        };
+        document.addEventListener('mousedown', handler);
+        return () => document.removeEventListener('mousedown', handler);
+    }, [fileMenuOpen]);
 
     const filtered = projects.filter(p =>
         p.name && p.name.toLowerCase().includes(search.toLowerCase())
@@ -62,15 +76,28 @@ const MLProjectsPage = ({ projects = [], onBack, onCreate, onOpen, onDelete, onI
         <div className={styles.page}>
             {/* Top bar */}
             <div className={styles.header}>
+                <img
+                    src={openblockLogo}
+                    alt="RoboCoders Studio"
+                    className={styles.headerLogo}
+                    draggable={false}
+                />
                 <span className={styles.headerTitle}>Machine Learning Environment</span>
                 <nav className={styles.headerNav}>
-                    <span>File</span>
-                    <span>Tutorials</span>
-                    <span>Help</span>
+                    <div className={styles.fileMenuWrap} ref={fileMenuRef}>
+                        <button className={styles.navBtn} onClick={() => setFileMenuOpen(o => !o)}>File</button>
+                        {fileMenuOpen && (
+                            <div className={styles.navDropdown}>
+                                <button onClick={() => { setFileMenuOpen(false); onCreate && onCreate(); }}>New ML Project</button>
+                                <button onClick={() => { setFileMenuOpen(false); onImport && onImport(); }}>Open ML Project</button>
+                                <button onClick={() => { setFileMenuOpen(false); document.documentElement.requestFullscreen && document.documentElement.requestFullscreen(); }}>Full Screen Recording</button>
+                            </div>
+                        )}
+                    </div>
+                    <button className={styles.navBtn}>Help</button>
                 </nav>
-                <button className={styles.backBtn} onClick={onBack}>
-                    &#8592; Back
-                </button>
+                <div className={styles.headerSpacer} />
+                <button className={styles.backBtn} onClick={onBack}>&#8592; Back</button>
             </div>
 
             {/* Sub-header */}

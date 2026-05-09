@@ -30,23 +30,80 @@
     box-shadow: 0 2px 8px rgba(153, 102, 255, 0.3);
 }
 
+.headerLogo {
+    height: 1.6rem;
+    vertical-align: middle;
+    flex-shrink: 0;
+}
+
 .headerTitle {
     font-size: 18px;
     font-weight: 700;
-    flex: 1;
-    margin-left: 12px;
+    margin-left: 10px;
+    white-space: nowrap;
 }
+
+.headerSpacer { flex: 1; }
 
 .headerNav {
     display: flex;
-    gap: 24px;
-    font-size: 14px;
-    opacity: 0.9;
-    cursor: pointer;
+    align-items: stretch;
+    height: 50px;
 }
 
-.headerNav span:hover {
+.navBtn {
+    background: none;
+    border: none;
+    color: white;
+    font-size: 14px;
+    cursor: pointer;
+    padding: 0 14px;
+    opacity: 0.9;
+    font-family: inherit;
+    display: flex;
+    align-items: center;
+    transition: background 0.15s;
+    white-space: nowrap;
+}
+.navBtn:hover {
     opacity: 1;
+    background: rgba(255, 255, 255, 0.12);
+}
+
+.fileMenuWrap {
+    position: relative;
+    display: flex;
+    align-items: stretch;
+}
+
+.navDropdown {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    background: #9966FF;
+    border-radius: 0 0 4px 4px;
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
+    z-index: 1000;
+    min-width: 210px;
+    overflow: hidden;
+}
+
+.navDropdown button {
+    display: block;
+    width: 100%;
+    text-align: left;
+    padding: 10px 20px;
+    border: none;
+    background: transparent;
+    cursor: pointer;
+    font-size: 14px;
+    color: white;
+    transition: background 0.15s;
+    font-family: inherit;
+}
+
+.navDropdown button:hover {
+    background: rgba(255, 255, 255, 0.14);
 }
 
 .backBtn {
