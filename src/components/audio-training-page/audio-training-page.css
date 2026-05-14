@@ -733,4 +733,64 @@
 .testResultBar      { margin-bottom: 4px; }
 .testResultLabelRow { display: flex; justify-content: space-between; font-size: 11px; color: #444; margin-bottom: 3px; font-weight: 600; }
 .testResultTrack    { height: 8px; background: #F0E8FF; border-radius: 4px; overflow: hidden; }
+
+/* ── Engine init / error overlay ── */
+.engineOverlay {
+    position: absolute;
+    inset: 0;
+    background: rgba(255, 255, 255, 0.94);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    z-index: 200;
+    gap: 12px;
+}
+
+.overlaySpinner {
+    width: 52px;
+    height: 52px;
+    border: 5px solid #e0ccff;
+    border-top-color: #9966ff;
+    border-radius: 50%;
+    animation: overlaySpinAnim 0.8s linear infinite;
+}
+
+@keyframes overlaySpinAnim {
+    to { transform: rotate(360deg); }
+}
+
+.overlayTitle {
+    font-size: 18px;
+    font-weight: 700;
+    color: #4d2e9a;
+    margin: 0;
+}
+
+.overlaySubtitle {
+    font-size: 13px;
+    color: #7a5fb0;
+    margin: 0;
+    max-width: 360px;
+    text-align: center;
+}
+
+.overlayErrorIcon {
+    font-size: 42px;
+    line-height: 1;
+}
+
+.overlayRetryBtn {
+    margin-top: 6px;
+    background: #9966ff;
+    color: white;
+    border: none;
+    border-radius: 20px;
+    padding: 9px 26px;
+    font-size: 14px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: background 0.15s;
+}
+.overlayRetryBtn:hover { background: #7a4fd0; }
 .testResultFill     { height: 100%; border-radius: 4px; transition: width 0.25s; }

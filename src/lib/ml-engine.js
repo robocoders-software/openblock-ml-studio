@@ -10,10 +10,10 @@
                     VM extension works unchanged
    ─────────────────────────────────────────────────────────────── */
 import {
-    saveImageToIDB, getImageFromIDB,
-    idbPut, idbGet, idbDelete,
-    deleteProjectIDB as _idbDeleteProject
-} from './idb.js';
+    makeFSModelHandler,
+    fsWriteFile, fsReadFile, fsDeleteProject,
+    getImageFromFS, saveImageToFS
+} from './ml-fs.js';
 
 /* ── Singletons ── */
 let _tf         = null;
@@ -203,7 +203,7 @@ export const trainImages = async (
     for (let i = 0; i < labels.length; i++) {
         for (const ex of (trainingData[labels[i]] || [])) {
             let src = ex.data && ex.data.startsWith('data:') ? ex.data : null;
-            if (!src) src = await getImageFromIDB(projectId, ex.id);
+            if (!src) src = await getImageFromFS(projectId, ex.id);
             if (!src) { done++; onProgress && onProgress(Math.round(done / total * 50)); continue; }
 
             const img = await loadImg(src);
@@ -267,9 +267,9 @@ export const trainImages = async (
     xs.dispose();
     ys.dispose();
 
-    /* ── Persist head via TF.js built-in IDB model saving ── */
-    await head.save(`indexeddb://ml-head-${projectId}`);
-    await idbPut('models', `head-labels:${projectId}`, JSON.stringify(labels));
+    /* ── Persist head to filesystem ── */
+    await head.save(makeFSModelHandler(projectId, 'image-model'));
+    await fsWriteFile(projectId, 'image-model/labels.json', JSON.stringify(labels));
 
     return wrapHead(head, labels);
 };
@@ -293,7 +293,7 @@ export const evaluateImageModel = async (labels, trainingData, projectId, classi
     for (const actual of labels) {
         for (const ex of (trainingData[actual] || [])) {
             let src = ex.data && ex.data.startsWith('data:') ? ex.data : null;
-            if (!src) src = await getImageFromIDB(projectId, ex.id);
+            if (!src) src = await getImageFromFS(projectId, ex.id);
             done++;
             onProgress && onProgress(Math.round(done / total * 100));
             if (!src) continue;
@@ -331,23 +331,20 @@ export const evaluateImageModel = async (labels, trainingData, projectId, classi
 export const loadImageClassifier = async (projectId, labels) => {
     try {
         const tf       = await getTF();
-        const head     = await tf.loadLayersModel(`indexeddb://ml-head-${projectId}`);
-        const lblRaw   = await idbGet('models', `head-labels:${projectId}`);
-        const savedLbl = lblRaw ? JSON.parse(lblRaw) : (labels || []);
+        const head     = await tf.loadLayersModel(makeFSModelHandler(projectId, 'image-model'));
+        const lblRaw   = await fsReadFile(projectId, 'image-model/labels.json');
+        const savedLbl = lblRaw
+            ? JSON.parse(Buffer.from(lblRaw).toString('utf8'))
+            : (labels || []);
         return wrapHead(head, savedLbl);
     } catch (_) {
         return null;
     }
 };
 
-/* ── Delete all project data (images + head model) ── */
+/* ── Delete all project data ── */
 export const deleteProjectData = async projectId => {
-    await _idbDeleteProject(projectId);
-    await idbDelete('models', `head-labels:${projectId}`);
-    try {
-        const tf = await getTF();
-        await tf.io.removeModel(`indexeddb://ml-head-${projectId}`);
-    } catch (_) {}
+    await fsDeleteProject(projectId);
 };
 
 /* ── Prediction ──
@@ -365,8 +362,8 @@ export const predictImages = async (imgEl, classifier, net, labels) => {
     }));
 };
 
-/* ── Re-export IDB helpers ── */
-export { saveImageToIDB, getImageFromIDB, deleteProjectIDB } from './idb.js';
+/* ── Re-export FS helpers so callers can import from ml-engine ── */
+export { saveImageToFS, getImageFromFS, fsDeleteProject as deleteProjectFS } from './ml-fs.js';
 
 /* ════════════════════════════════════════════════════════════════
    Audio / Speech-Commands Engine
@@ -432,12 +429,27 @@ export const initSpeechCommands = async (projectId, onStatus) => {
 
     if (!_baseRecognizer) {
         onStatus && onStatus('Loading audio base model…');
-        // Ensure the resource server is alive before fetching model files.
-        // If it crashed, main process restarts it automatically.
         const ipc = _getIpc();
-        if (ipc) await ipc.invoke('ensure-resource-server').catch(() => {});
-        _baseRecognizer = sc.create('BROWSER_FFT', undefined, BROWSER_FFT_MODEL_URL, BROWSER_FFT_META_URL);
-        await _baseRecognizer.ensureModelLoaded();
+        // Retry up to 3× — the resource server may still be starting on first launch.
+        let lastErr = null;
+        for (let attempt = 0; attempt < 3; attempt++) {
+            try {
+                if (ipc) await ipc.invoke('ensure-resource-server').catch(() => {});
+                const rec = sc.create('BROWSER_FFT', undefined, BROWSER_FFT_MODEL_URL, BROWSER_FFT_META_URL);
+                await rec.ensureModelLoaded();
+                _baseRecognizer = rec;
+                lastErr = null;
+                break;
+            } catch (e) {
+                lastErr = e;
+                _baseRecognizer = null;
+                if (attempt < 2) {
+                    onStatus && onStatus(`Retrying audio model load (${attempt + 1}/3)…`);
+                    await new Promise(r => setTimeout(r, 1500));
+                }
+            }
+        }
+        if (lastErr) throw lastErr;
     }
 
     if (_soundProjectId !== projectId || !_transferRec) {
@@ -518,8 +530,8 @@ export const trainSounds = async (labels, trainingData, projectId, onStatus, onP
         }
     });
 
-    await _transferRec.save(`indexeddb://ml-sound-${projectId}`);
-    await idbPut('models', `sound-labels:${projectId}`, JSON.stringify(labels));
+    await _transferRec.save(makeFSModelHandler(projectId, 'audio-model'));
+    await fsWriteFile(projectId, 'audio-model/labels.json', JSON.stringify(labels));
     onStatus && onStatus('Training Complete');
     onProgress && onProgress(100);
 };
@@ -528,7 +540,7 @@ export const trainSounds = async (labels, trainingData, projectId, onStatus, onP
 export const loadSoundClassifier = async (projectId, labels) => {
     try {
         if (!_transferRec) return null;
-        await _transferRec.load(`indexeddb://ml-sound-${projectId}`);
+        await _transferRec.load(makeFSModelHandler(projectId, 'audio-model'));
         _transferRec.words = Array.from(labels).sort();
         return _transferRec;
     } catch (_) {
@@ -630,17 +642,16 @@ export const exportAudioModelArtifacts = async () => {
 };
 
 /* Load audio model from artifacts back into the speech-commands pipeline.
-   Saves the restored LayersModel to IDB so loadSoundClassifier() can pick it up.
+   Saves the restored LayersModel to the FS so loadSoundClassifier() can pick it up.
    Returns true on success. */
 export const loadAudioModelFromArtifacts = async (modelJsonStr, weightData, labels) => {
     const projectId = _soundProjectId;
     if (!projectId) return false;
     try {
-        const tf    = await getTF();
         const model = await _modelFromArtifacts(modelJsonStr, weightData);
-        await model.save(`indexeddb://ml-sound-${projectId}`);
+        await model.save(makeFSModelHandler(projectId, 'audio-model'));
         model.dispose();
-        await idbPut('models', `sound-labels:${projectId}`, JSON.stringify(labels));
+        await fsWriteFile(projectId, 'audio-model/labels.json', JSON.stringify(labels));
         return true;
     } catch (e) {
         console.warn('[ml-engine] loadAudioModelFromArtifacts failed:', e.message);

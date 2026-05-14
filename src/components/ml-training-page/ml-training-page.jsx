@@ -12,11 +12,14 @@ import {
     loadImageClassifier,
     predictImages,
     evaluateImageModel,
-    saveImageToIDB,
-    getImageFromIDB,
     setActiveModel
 } from '../../lib/ml-engine.js';
-import {loadProjectImages} from '../../lib/idb.js';
+import {
+    saveImageToFS        as saveImageToIDB,
+    getImageFromFS       as getImageFromIDB,
+    loadProjectImagesFromFS as loadProjectImages
+} from '../../lib/ml-fs.js';
+import {saveImageProject, loadImageProject} from '../../lib/project-persistence.js';
 import TrainReportModal from './TrainReportModal.jsx';
 
 const CLASS_COLORS = ['#E05C3D', '#2EAA7E', '#9966FF', '#774DCB', '#F39C12', '#E91E63', '#1ABC9C', '#E67E22'];
@@ -705,7 +708,8 @@ const MLTrainingPage = ({project, onBack, onUseInBlocks, onUpdateProject, onNewP
     const [selectedCam,      setSelectedCam]      = useState('');
     const [activeWebcamLabel, setActiveWebcamLabel] = useState(null);
     const [openMenuLabel,    setOpenMenuLabel]    = useState(null);
-    const [fileMenuOpen,  setFileMenuOpen]  = useState(false);
+    const [fileMenuOpen,     setFileMenuOpen]     = useState(false);
+    const [saveStatus,       setSaveStatus]       = useState('idle'); // 'idle' | 'saving' | 'saved' | 'error'
     const fileMenuRef = useRef(null);
 
     useEffect(() => {
@@ -752,29 +756,64 @@ const MLTrainingPage = ({project, onBack, onUseInBlocks, onUpdateProject, onNewP
             .catch(() => {});
     }, []);
 
-    /* ── Load project data from IDB ── */
-    useEffect(() => {
-        let cancelled = false;
-        (async () => {
-            try {
+    /* ── Load project data (try opened .ob file first, fall back to FS) ── */
+    const loadFromDisk = useCallback(async (signal = {cancelled: false}) => {
+        try {
+            setLoadingData(true);
+            classifierRef.current = null;
+            mobileNetRef.current  = null;
+            const fromOb = await loadImageProject(project.id);
+            if (fromOb && !signal.cancelled) {
+                if (fromOb.name) onUpdateProject({...project, name: fromOb.name});
+                if (fromOb.labels && fromOb.labels.length >= 2) setLabels(fromOb.labels);
+                const enriched = await loadProjectImages(project.id, fromOb.trainingData || {});
+                if (!signal.cancelled) setData(enriched);
+                if (fromOb.classifier && fromOb.net) {
+                    classifierRef.current = fromOb.classifier;
+                    mobileNetRef.current  = fromOb.net;
+                    setTrained(true);
+                } else {
+                    setTrained(false);
+                }
+            } else {
                 const enriched = await loadProjectImages(project.id, project.trainingData || {});
-                if (!cancelled) setData(enriched);
+                if (!signal.cancelled) setData(enriched);
                 if (project.trained) {
                     const restored = await loadImageClassifier(project.id, project.labels || ['Class 1', 'Class 2']);
-                    if (restored && !cancelled) {
+                    if (restored && !signal.cancelled) {
                         classifierRef.current = restored;
                         getMobileNet(s => setStatus(s)).then(net => {
-                            if (!cancelled) mobileNetRef.current = net;
+                            if (!signal.cancelled) mobileNetRef.current = net;
                         }).catch(() => {});
                         setTrained(true);
                     }
+                } else {
+                    setTrained(false);
                 }
-            } finally {
-                if (!cancelled) setLoadingData(false);
             }
-        })();
-        return () => { cancelled = true; };
+        } finally {
+            if (!signal.cancelled) setLoadingData(false);
+        }
+    }, [project.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+    useEffect(() => {
+        const signal = {cancelled: false};
+        loadFromDisk(signal);
+        return () => { signal.cancelled = true; };
     }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+    /* Re-load when a new .ob file is opened in the blocks editor */
+    useEffect(() => {
+        try {
+            const ipc = window.require('electron').ipcRenderer;
+            const handler = () => {
+                const signal = {cancelled: false};
+                loadFromDisk(signal);
+            };
+            ipc.on('ml-project-file-changed', handler);
+            return () => ipc.removeListener('ml-project-file-changed', handler);
+        } catch (_) { /* not in Electron */ }
+    }, [loadFromDisk]);
 
     /* ── Persist metadata ── */
     useEffect(() => {
@@ -901,6 +940,9 @@ const MLTrainingPage = ({project, onBack, onUseInBlocks, onUpdateProject, onNewP
             classifierRef.current = classifier;
             setTrained(true);
             setTrainPct(100);
+            /* Cache ML data so the next normal blocks save includes the trained model */
+            saveImageProject(project, labels, disabledLabels, trainingData, classifier, {showDialog: false})
+                .catch(() => {});
             setStatus('Evaluating model…');
 
             // Run evaluation for report (non-blocking)
@@ -929,6 +971,23 @@ const MLTrainingPage = ({project, onBack, onUseInBlocks, onUpdateProject, onNewP
         labels,
         trainingData
     };
+
+    /* ── Save project with user feedback ── */
+    const handleSave = useCallback(async () => {
+        setSaveStatus('saving');
+        try {
+            const result = await saveImageProject(
+                project, labels, disabledLabels, trainingData, classifierRef.current, {showDialog: false}
+            );
+            if (result && result.success === false) throw new Error(result.error || 'Save failed');
+            setSaveStatus('saved');
+        } catch (e) {
+            console.error('[MLPage] save failed:', e);
+            setSaveStatus('error');
+        } finally {
+            setTimeout(() => setSaveStatus('idle'), 2000);
+        }
+    }, [project, labels, disabledLabels, trainingData]);
 
     /* ── Deploy model to window.__openblockMLModel ── */
     const deployModel = () => {
@@ -1056,7 +1115,14 @@ const MLTrainingPage = ({project, onBack, onUseInBlocks, onUpdateProject, onNewP
                     Upload Classes from Folder
                 </button>
                 <input type="file" webkitdirectory="" multiple accept="image/*" style={{display: 'none'}} ref={folderInputRef} onChange={handleFolderUpload}/>
-                <button className={styles.saveBtn} title="Project auto-saves">💾</button>
+                <button
+                    className={styles.saveBtn}
+                    title={saveStatus === 'saving' ? 'Saving…' : saveStatus === 'saved' ? 'Saved!' : saveStatus === 'error' ? 'Save failed' : 'Save ML Project'}
+                    disabled={saveStatus === 'saving'}
+                    onClick={handleSave}
+                >
+                    {saveStatus === 'saving' ? '⏳' : saveStatus === 'saved' ? '✓' : saveStatus === 'error' ? '✗' : '💾'}
+                </button>
                 <div className={styles.spacer}/>
                 <span className={styles.webcamLabel}>Select Webcam:</span>
                 <select className={styles.webcamSelect} value={selectedCam} onChange={e => setSelectedCam(e.target.value)}>

@@ -15,16 +15,17 @@ import {
     setActiveModel
 } from '../../lib/ml-engine.js';
 import {
-    saveAudioToIDB,
-    saveAudioThumbToIDB,
-    getAudioThumbFromIDB,
-    loadProjectAudio,
-    saveAudioBlobToIDB,
-    getAudioBlobFromIDB,
-    deleteAudioBlobFromIDB
-} from '../../lib/idb.js';
+    saveAudioToFS        as saveAudioToIDB,
+    saveAudioThumbToFS   as saveAudioThumbToIDB,
+    getAudioThumbFromFS  as getAudioThumbFromIDB,
+    loadProjectAudioFromFS as loadProjectAudio,
+    saveAudioBlobToFS    as saveAudioBlobToIDB,
+    getAudioBlobFromFS   as getAudioBlobFromIDB,
+    deleteAudioBlobFromFS as deleteAudioBlobFromIDB
+} from '../../lib/ml-fs.js';
 import {WaveformRenderer} from './waveform-renderer.js';
 import {computeRMS, blobToWavBlob} from '../../lib/audio-utils.js';
+import {saveAudioProject, loadAudioProject} from '../../lib/project-persistence.js';
 
 const CLASS_COLORS = ['#E05C3D', '#2EAA7E', '#9966FF', '#774DCB', '#F39C12', '#E91E63', '#1ABC9C', '#E67E22'];
 const MAX_THUMBS   = 9;
@@ -760,7 +761,8 @@ const AudioTrainingPage = ({project, onBack, onUseInBlocks, onUpdateProject, onN
     const [selectedMic,    setSelMic]         = useState('');
     const [activeMicLabel, setActiveMicLabel] = useState(null);
     const [openMenuLabel,  setOpenMenuLabel]  = useState(null);
-    const [fileMenuOpen,  setFileMenuOpen] = useState(false);
+    const [fileMenuOpen,   setFileMenuOpen]   = useState(false);
+    const [saveStatus,     setSaveStatus]     = useState('idle'); // 'idle' | 'saving' | 'saved' | 'error'
     const fileMenuRef = useRef(null);
 
     useEffect(() => {
@@ -791,32 +793,68 @@ const AudioTrainingPage = ({project, onBack, onUseInBlocks, onUpdateProject, onN
             .catch(() => {});
     }, []);
 
-    /* Init speech-commands + load stored audio samples */
+    /* Init speech-commands engine once */
     useEffect(() => {
         let cancelled = false;
-        (async () => {
-            try {
-                await initSpeechCommands(project.id, s => { if (!cancelled) setEngStatus(s); });
-                if (!cancelled) { setReady(true); setEngStatus(''); }
-
-                const enriched = await loadProjectAudio(project.id, project.trainingData || {});
-                if (!cancelled) setData(enriched);
-
-                if (project.trained) {
-                    const loaded = await loadSoundClassifier(
-                        project.id, project.labels || labels
-                    );
-                    if (loaded && !cancelled) setTrained(true);
-                }
-            } catch (err) {
-                if (!cancelled) setEngStatus(`Error: ${err.message}`);
-                console.error('[AudioPage] init:', err);
-            } finally {
-                if (!cancelled) setLoading(false);
-            }
-        })();
+        initSpeechCommands(project.id, s => { if (!cancelled) setEngStatus(s); })
+            .then(() => { if (!cancelled) { setReady(true); setEngStatus(''); } })
+            .catch(err => { if (!cancelled) setEngStatus(`Error: ${err.message}`); });
         return () => { cancelled = true; };
     }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+    const retryEngine = useCallback(() => {
+        setReady(false);
+        setEngStatus('Retrying…');
+        initSpeechCommands(project.id, s => setEngStatus(s))
+            .then(() => { setReady(true); setEngStatus(''); })
+            .catch(err => setEngStatus(`Error: ${err.message}`));
+    }, [project.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+    /* Load audio data from disk; re-runs when a new .ob is opened */
+    const loadFromDisk = useCallback(async (signal = {cancelled: false}) => {
+        try {
+            setLoading(true);
+            const fromOb = await loadAudioProject(project.id);
+            if (fromOb && !signal.cancelled) {
+                if (fromOb.name) onUpdateProject({...project, name: fromOb.name});
+                if (fromOb.labels && fromOb.labels.length >= 2) setLabels(fromOb.labels);
+                if (!signal.cancelled) setData(fromOb.trainingData || {});
+                setTrained(!!(fromOb.modelRestored && !signal.cancelled));
+            } else {
+                const enriched = await loadProjectAudio(project.id, project.trainingData || {});
+                if (!signal.cancelled) setData(enriched);
+                if (project.trained) {
+                    const loaded = await loadSoundClassifier(project.id, project.labels || labels);
+                    if (loaded && !signal.cancelled) setTrained(true);
+                } else {
+                    setTrained(false);
+                }
+            }
+        } catch (err) {
+            console.error('[AudioPage] loadFromDisk:', err);
+        } finally {
+            if (!signal.cancelled) setLoading(false);
+        }
+    }, [project.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+    useEffect(() => {
+        const signal = {cancelled: false};
+        loadFromDisk(signal);
+        return () => { signal.cancelled = true; };
+    }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+    /* Re-load when a new .ob file is opened in the blocks editor */
+    useEffect(() => {
+        try {
+            const ipc = window.require('electron').ipcRenderer;
+            const handler = () => {
+                const signal = {cancelled: false};
+                loadFromDisk(signal);
+            };
+            ipc.on('ml-project-file-changed', handler);
+            return () => ipc.removeListener('ml-project-file-changed', handler);
+        } catch (_) { /* not in Electron */ }
+    }, [loadFromDisk]);
 
     /* Persist metadata on change */
     useEffect(() => {
@@ -908,6 +946,9 @@ const AudioTrainingPage = ({project, onBack, onUseInBlocks, onUpdateProject, onN
             );
             setTrained(true);
             setTrainPct(100);
+            /* Cache ML data so the next normal blocks save includes the trained model */
+            saveAudioProject(project, labels, disabledLabels, trainingData, true, {showDialog: false})
+                .catch(() => {});
         } catch (err) {
             setStatus(`Error: ${err.message}`);
             console.error('[AudioTrain]', err);
@@ -915,6 +956,23 @@ const AudioTrainingPage = ({project, onBack, onUseInBlocks, onUpdateProject, onN
             setTraining(false);
         }
     };
+
+    /* Persist ML project data to disk with user feedback. */
+    const handleSaveProject = useCallback(async () => {
+        setSaveStatus('saving');
+        try {
+            const result = await saveAudioProject(
+                project, labels, disabledLabels, trainingData, isTrained, {showDialog: false}
+            );
+            if (result && result.success === false) throw new Error(result.error || 'Save failed');
+            setSaveStatus('saved');
+        } catch (err) {
+            console.error('[AudioPage] save failed:', err);
+            setSaveStatus('error');
+        } finally {
+            setTimeout(() => setSaveStatus('idle'), 2000);
+        }
+    }, [project, labels, disabledLabels, trainingData, isTrained]);
 
     /* Deploy */
     const deployModel = () => {
@@ -990,6 +1048,30 @@ const AudioTrainingPage = ({project, onBack, onUseInBlocks, onUpdateProject, onN
 
     return (
         <div className={styles.page}>
+            {/* Full-page overlay while the audio engine is initialising or has errored.
+                Blocks all interaction so users cannot trigger "engine not ready" errors. */}
+            {!engineReady && (
+                <div className={styles.engineOverlay}>
+                    {engineStatus && engineStatus.startsWith('Error') ? (
+                        <>
+                            <div className={styles.overlayErrorIcon}>⚠️</div>
+                            <div className={styles.overlayTitle}>Audio Engine Failed</div>
+                            <div className={styles.overlaySubtitle}>
+                                {engineStatus.replace(/^Error:\s*/i, '')}
+                            </div>
+                            <button className={styles.overlayRetryBtn} onClick={retryEngine}>
+                                Try Again
+                            </button>
+                        </>
+                    ) : (
+                        <>
+                            <div className={styles.overlaySpinner} />
+                            <div className={styles.overlayTitle}>Loading Audio Engine</div>
+                            <div className={styles.overlaySubtitle}>{engineStatus}</div>
+                        </>
+                    )}
+                </div>
+            )}
             {/* Top header */}
             <div className={styles.header}>
                 <img
@@ -1032,8 +1114,15 @@ const AudioTrainingPage = ({project, onBack, onUseInBlocks, onUpdateProject, onN
                 <div className={styles.divider}/>
                 <span className={styles.projectNamePill}>{project.name}</span>
                 <div className={styles.divider}/>
-                {engineStatus && <span style={{fontSize: 12, color: '#9966FF'}}>{engineStatus}</span>}
-                <button className={styles.saveBtn} title="Project auto-saves">💾</button>
+                {/* engineStatus is shown in the full-page overlay while !engineReady */}
+                <button
+                    className={styles.saveBtn}
+                    title={saveStatus === 'saving' ? 'Saving…' : saveStatus === 'saved' ? 'Saved!' : saveStatus === 'error' ? 'Save failed' : 'Save ML Project'}
+                    disabled={saveStatus === 'saving'}
+                    onClick={handleSaveProject}
+                >
+                    {saveStatus === 'saving' ? '⏳' : saveStatus === 'saved' ? '✓' : saveStatus === 'error' ? '✗' : '💾'}
+                </button>
                 <div className={styles.spacer}/>
                 <span className={styles.webcamLabel}>Select Microphones:</span>
                 <select className={styles.webcamSelect} value={selectedMic} onChange={e => setSelMic(e.target.value)}>
