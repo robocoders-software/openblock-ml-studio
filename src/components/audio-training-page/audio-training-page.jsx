@@ -2,7 +2,7 @@ import React, {useState, useRef, useEffect, useLayoutEffect, useCallback} from '
 import PropTypes from 'prop-types';
 import styles from './audio-training-page.css';
 import openblockLogo from '../openblock-logo.svg';
-import Loader from 'openblock-gui/src/components/loader/loader.jsx';
+import MLLoader from '../ml-loader/ml-loader.jsx';
 import Spinner from 'openblock-gui/src/components/spinner/spinner.jsx';
 
 import {
@@ -812,23 +812,42 @@ const AudioTrainingPage = ({project, onBack, onUseInBlocks, onUpdateProject, onN
 
     /* Load audio data from disk; re-runs when a new .ob is opened */
     const loadFromDisk = useCallback(async (signal = {cancelled: false}) => {
+        let finalLabels = project.labels || labels;
+        let trained = false;
         try {
             setLoading(true);
             const fromOb = await loadAudioProject(project.id);
             if (fromOb && !signal.cancelled) {
                 if (fromOb.name) onUpdateProject({...project, name: fromOb.name});
-                if (fromOb.labels && fromOb.labels.length >= 2) setLabels(fromOb.labels);
+                if (fromOb.labels && fromOb.labels.length >= 2) {
+                    setLabels(fromOb.labels);
+                    finalLabels = fromOb.labels;
+                }
                 if (!signal.cancelled) setData(fromOb.trainingData || {});
-                setTrained(!!(fromOb.modelRestored && !signal.cancelled));
+                trained = !!(fromOb.modelRestored && !signal.cancelled);
+                setTrained(trained);
             } else {
                 const enriched = await loadProjectAudio(project.id, project.trainingData || {});
                 if (!signal.cancelled) setData(enriched);
                 if (project.trained) {
                     const loaded = await loadSoundClassifier(project.id, project.labels || labels);
-                    if (loaded && !signal.cancelled) setTrained(true);
+                    trained = !!(loaded && !signal.cancelled);
+                    if (trained) setTrained(true);
                 } else {
                     setTrained(false);
                 }
+            }
+            /* Always register model type so the blocks editor knows this is a SOUNDS project. */
+            if (!signal.cancelled) {
+                setActiveModel({
+                    projectId:      project.id,
+                    projectName:    project.name,
+                    type:           'sounds',
+                    labels:         finalLabels,
+                    trainingStatus: trained ? 'ready' : 'idle',
+                    startListening,
+                    stopListening
+                });
             }
         } catch (err) {
             console.error('[AudioPage] loadFromDisk:', err);
@@ -856,7 +875,7 @@ const AudioTrainingPage = ({project, onBack, onUseInBlocks, onUpdateProject, onN
         } catch (_) { /* not in Electron */ }
     }, [loadFromDisk]);
 
-    /* Persist metadata on change */
+    /* Persist metadata on change — auto-save so training data survives navigation */
     useEffect(() => {
         if (loadingData) return;
         const metaOnly = {};
@@ -864,6 +883,8 @@ const AudioTrainingPage = ({project, onBack, onUseInBlocks, onUpdateProject, onN
             metaOnly[lbl] = (exs || []).map(ex => ({id: ex.id, type: ex.type}));
         }
         onUpdateProject({...project, labels, trainingData: metaOnly, trained: isTrained, updatedAt: Date.now()});
+        saveAudioProject(project, labels, disabledLabels, trainingData, isTrained, {showDialog: false})
+            .catch(() => {});
     }, [labels, trainingData, isTrained]); // eslint-disable-line react-hooks/exhaustive-deps
 
     /* CRUD helpers */
@@ -989,6 +1010,7 @@ const AudioTrainingPage = ({project, onBack, onUseInBlocks, onUpdateProject, onN
 
     const handleExport = () => {
         deployModel();
+        try { window.require('electron').ipcRenderer.send('ml-set-pending-project', project.id); } catch (_) {}
         onUseInBlocks();
     };
 
@@ -999,16 +1021,15 @@ const AudioTrainingPage = ({project, onBack, onUseInBlocks, onUpdateProject, onN
         const wrapRect  = wrap.getBoundingClientRect();
         const trainRect = trainCardRef.current.getBoundingClientRect();
         const testRect  = testCardRef.current.getBoundingClientRect();
-        const sl = wrap.scrollLeft, st = wrap.scrollTop;
         const paths = [];
 
         classCardRefs.current.forEach((r, i) => {
             if (!r) return;
             const rect = r.getBoundingClientRect();
-            const x1 = rect.right  - wrapRect.left + sl;
-            const y1 = rect.top + rect.height / 2 - wrapRect.top + st;
-            const x2 = trainRect.left - wrapRect.left + sl;
-            const y2 = trainRect.top + trainRect.height / 2 - wrapRect.top + st;
+            const x1 = rect.right  - wrapRect.left;
+            const y1 = rect.top + rect.height / 2 - wrapRect.top;
+            const x2 = trainRect.left - wrapRect.left;
+            const y2 = trainRect.top + trainRect.height / 2 - wrapRect.top;
             const cx = Math.max(40, (x2 - x1) / 2);
             paths.push({
                 color: CLASS_COLORS[i % CLASS_COLORS.length],
@@ -1016,10 +1037,10 @@ const AudioTrainingPage = ({project, onBack, onUseInBlocks, onUpdateProject, onN
             });
         });
 
-        const tx1 = trainRect.right - wrapRect.left + sl;
-        const ty1 = trainRect.top + trainRect.height / 2 - wrapRect.top + st;
-        const tx2 = testRect.left  - wrapRect.left + sl;
-        const ty2 = testRect.top + testRect.height / 2 - wrapRect.top + st;
+        const tx1 = trainRect.right - wrapRect.left;
+        const ty1 = trainRect.top + trainRect.height / 2 - wrapRect.top;
+        const tx2 = testRect.left  - wrapRect.left;
+        const ty2 = testRect.top + testRect.height / 2 - wrapRect.top;
         const tcx = Math.max(40, (tx2 - tx1) / 2);
         paths.push({
             color: '#9966FF',
@@ -1042,9 +1063,7 @@ const AudioTrainingPage = ({project, onBack, onUseInBlocks, onUpdateProject, onN
         activeLabels.length >= 2 &&
         activeLabels.every(l => (trainingData[l] || []).length >= 10);
 
-    if (loadingData) {
-        return <Loader messageId="gui.loader.headline" />;
-    }
+    if (loadingData) return <MLLoader message="Loading project data…" />;
 
     return (
         <div className={styles.page}>
@@ -1143,8 +1162,8 @@ const AudioTrainingPage = ({project, onBack, onUseInBlocks, onUpdateProject, onN
                     ))}
                 </svg>
 
-                {/* Classes column */}
-                <div className={styles.classesColumn}>
+                {/* Classes column — scrolls independently */}
+                <div className={styles.classesColumn} onScroll={recalcCurves}>
                     {labels.map((lbl, i) => (
                         <AudioClassCard
                             key={lbl}
@@ -1174,9 +1193,8 @@ const AudioTrainingPage = ({project, onBack, onUseInBlocks, onUpdateProject, onN
                     <button className={styles.addClassCard} onClick={addClass}>+ Add Class</button>
                 </div>
 
-                {/* Right: Training + Testing */}
-                <div className={styles.rightArea}>
-                    {/* Training card */}
+                {/* Training column — stays fixed */}
+                <div className={styles.trainingColumn}>
                     <div className={styles.trainingCard} ref={trainCardRef}>
                         <div className={styles.trainingHeader}><span>Training</span></div>
                         {disabledLabels.length > 0 && (
@@ -1242,7 +1260,10 @@ const AudioTrainingPage = ({project, onBack, onUseInBlocks, onUpdateProject, onN
                         )}
                     </div>
 
-                    {/* Testing card */}
+                </div>
+
+                {/* Testing column — stays fixed */}
+                <div className={styles.testingColumn}>
                     <div className={styles.testingCard} ref={testCardRef}>
                         <div className={styles.testingHeader}>
                             <span>Testing</span>

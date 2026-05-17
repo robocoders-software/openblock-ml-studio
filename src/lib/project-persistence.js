@@ -17,7 +17,12 @@
    ─────────────────────────────────────────────────────────────── */
 
 import {fsWriteFile, loadProjectImagesFromFS, loadProjectAudioFromFS} from './ml-fs.js';
-import {loadImageClassifier, getMobileNet, loadSoundClassifier, setActiveModel} from './ml-engine.js';
+import {
+    loadImageClassifier, getMobileNet,
+    loadSoundClassifier,
+    loadTextClassifier, classifyText,
+    setActiveModel
+} from './ml-engine.js';
 
 const getIpc = () => {
     try { return window.require('electron').ipcRenderer; } catch (_) { return null; }
@@ -43,6 +48,7 @@ export const saveImageProject = async (project, labels, disabledLabels, training
     }
 
     /* Keep project.json on disk up-to-date */
+    const now = Date.now();
     try {
         await fsWriteFile(project.id, 'project.json', JSON.stringify({
             id:            project.id,
@@ -52,15 +58,14 @@ export const saveImageProject = async (project, labels, disabledLabels, training
             disabledLabels,
             trainingIndex,
             trained:       !!classifier,
-            savedAt:       Date.now()
+            createdAt:     project.createdAt || now,
+            updatedAt:     now,
+            savedAt:       now
         }));
     } catch (e) {
         console.error('[persistence] saveImageProject: failed to write project.json:', e);
         return {success: false, error: e.message};
     }
-
-    /* Tell main which project to bundle on the next blocks save */
-    ipc.send('ml-set-pending-project', project.id);
 
     if (showDialog) {
         return ipc.invoke('ml-save-ob-file', project.id, project.name);
@@ -150,6 +155,7 @@ export const saveAudioProject = async (project, labels, disabledLabels, training
         trainingIndex[label] = (samples || []).map(s => s.id);
     }
 
+    const now = Date.now();
     try {
         await fsWriteFile(project.id, 'project.json', JSON.stringify({
             id:            project.id,
@@ -159,14 +165,14 @@ export const saveAudioProject = async (project, labels, disabledLabels, training
             disabledLabels,
             trainingIndex,
             trained:       isTrained,
-            savedAt:       Date.now()
+            createdAt:     project.createdAt || now,
+            updatedAt:     now,
+            savedAt:       now
         }));
     } catch (e) {
         console.error('[persistence] saveAudioProject: failed to write project.json:', e);
         return {success: false, error: e.message};
     }
-
-    ipc.send('ml-set-pending-project', project.id);
 
     if (showDialog) {
         return ipc.invoke('ml-save-ob-file', project.id, project.name);
@@ -220,6 +226,98 @@ export const loadAudioProject = async (projectId) => {
         labels:         savedLabels,
         disabledLabels: meta.disabledLabels || [],
         trainingData:   enriched,
+        modelRestored
+    };
+};
+
+/* ═══════════════════════════════════════════════════════════════
+   TEXT CLASSIFIER
+═══════════════════════════════════════════════════════════════ */
+
+export const saveTextProject = async (project, labels, trainingData, isTrained, opts) => {
+    const showDialog = !opts || opts.showDialog !== false;
+    const ipc = getIpc();
+    if (!ipc) return {success: false, error: 'no ipc'};
+
+    /* Text samples are small — store text inline in trainingIndex */
+    const trainingIndex = {};
+    for (const [label, samples] of Object.entries(trainingData || {})) {
+        trainingIndex[label] = (samples || []).map(s => ({id: s.id, text: s.text || ''}));
+    }
+
+    const now = Date.now();
+    try {
+        await fsWriteFile(project.id, 'project.json', JSON.stringify({
+            id:           project.id,
+            name:         project.name,
+            type:         'text',
+            labels,
+            trainingIndex,
+            trained:      isTrained,
+            createdAt:    project.createdAt || now,
+            updatedAt:    now,
+            savedAt:      now
+        }));
+    } catch (e) {
+        console.error('[persistence] saveTextProject: failed to write project.json:', e);
+        return {success: false, error: e.message};
+    }
+
+    if (showDialog) {
+        return ipc.invoke('ml-save-ob-file', project.id, project.name);
+    }
+    return {success: true};
+};
+
+export const loadTextProject = async (projectId) => {
+    const ipc = getIpc();
+    if (!ipc) return null;
+
+    const meta = await ipc.invoke('ml-get-loaded-data', projectId);
+    if (!meta || meta.noMlData) return null;
+    if (meta.loadError) {
+        console.error('[persistence] ml-get-loaded-data error (text):', meta.loadError);
+        return null;
+    }
+    if (!meta.labels) return null;
+
+    const savedLabels = meta.labels;
+
+    /* Rebuild trainingData — text samples are stored inline in trainingIndex */
+    const trainingData = {};
+    for (const label of savedLabels) trainingData[label] = [];
+    for (const [label, items] of Object.entries(meta.trainingIndex || {})) {
+        if (!trainingData[label]) trainingData[label] = [];
+        for (const item of (Array.isArray(items) ? items : [])) {
+            if (item && item.text !== undefined) {
+                trainingData[label].push({id: item.id, type: 'text', text: item.text});
+            }
+        }
+    }
+
+    let modelRestored = false;
+    if (meta.trained) {
+        try {
+            const cls = await loadTextClassifier(projectId, savedLabels);
+            modelRestored = !!cls;
+            if (cls) {
+                setActiveModel({
+                    projectId,
+                    type:           'text',
+                    labels:         savedLabels,
+                    trainingStatus: 'ready',
+                    classifyText
+                });
+            }
+        } catch (e) {
+            console.warn('[persistence] text model load failed:', e.message);
+        }
+    }
+
+    return {
+        name:         meta.name || '',
+        labels:       savedLabels,
+        trainingData,
         modelRestored
     };
 };

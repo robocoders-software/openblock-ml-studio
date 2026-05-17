@@ -6,10 +6,13 @@
   "main": "./src/index.js",
   "license": "MIT",
   "peerDependencies": {
-    "react": "^16.0.0",
-    "prop-types": "^15.0.0",
-    "@tensorflow/tfjs": "^3.0.0",
+    "react": "^16.0.0"
+  },
+  "dependencies": {
+    "@tensorflow-models/knn-classifier": "^1.0.0",
     "@tensorflow-models/mobilenet": "^2.0.0",
-    "@tensorflow-models/knn-classifier": "^1.0.0"
+    "@tensorflow/tfjs": "^3.0.0",
+    "bayes-classifier": "^0.0.5",
+    "prop-types": "^15.0.0"
   }
 }

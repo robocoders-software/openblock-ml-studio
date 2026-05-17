@@ -2,8 +2,9 @@ import React, {useState, useRef, useEffect, useLayoutEffect, useCallback} from '
 import PropTypes from 'prop-types';
 import styles from './ml-training-page.css';
 import AudioTrainingPage from '../audio-training-page/audio-training-page.jsx';
+import TextTrainingPage  from '../text-training-page/text-training-page.jsx';
 import openblockLogo from '../openblock-logo.svg';
-import Loader from 'openblock-gui/src/components/loader/loader.jsx';
+import MLLoader from '../ml-loader/ml-loader.jsx';
 import Spinner from 'openblock-gui/src/components/spinner/spinner.jsx';
 
 import {
@@ -685,6 +686,19 @@ const MLTrainingPage = ({project, onBack, onUseInBlocks, onUpdateProject, onNewP
             />
         );
     }
+    if (project.type === 'text') {
+        return (
+            <TextTrainingPage
+                project={project}
+                onBack={onBack}
+                onUseInBlocks={onUseInBlocks}
+                onUpdateProject={onUpdateProject}
+                onNewProject={onNewProject}
+                onNewMLProject={onNewMLProject}
+                onOpenMLProject={onOpenMLProject}
+            />
+        );
+    }
     const [labels,         setLabels]      = useState(project.labels || ['Class 1', 'Class 2']);
     const [trainingData,   setData]        = useState({});
     const [loadingData,    setLoadingData] = useState(true);
@@ -758,6 +772,8 @@ const MLTrainingPage = ({project, onBack, onUseInBlocks, onUpdateProject, onNewP
 
     /* ── Load project data (try opened .ob file first, fall back to FS) ── */
     const loadFromDisk = useCallback(async (signal = {cancelled: false}) => {
+        let finalLabels = project.labels || ['Class 1', 'Class 2'];
+        let trained = false;
         try {
             setLoadingData(true);
             classifierRef.current = null;
@@ -765,12 +781,16 @@ const MLTrainingPage = ({project, onBack, onUseInBlocks, onUpdateProject, onNewP
             const fromOb = await loadImageProject(project.id);
             if (fromOb && !signal.cancelled) {
                 if (fromOb.name) onUpdateProject({...project, name: fromOb.name});
-                if (fromOb.labels && fromOb.labels.length >= 2) setLabels(fromOb.labels);
+                if (fromOb.labels && fromOb.labels.length >= 2) {
+                    setLabels(fromOb.labels);
+                    finalLabels = fromOb.labels;
+                }
                 const enriched = await loadProjectImages(project.id, fromOb.trainingData || {});
                 if (!signal.cancelled) setData(enriched);
                 if (fromOb.classifier && fromOb.net) {
                     classifierRef.current = fromOb.classifier;
                     mobileNetRef.current  = fromOb.net;
+                    trained = true;
                     setTrained(true);
                 } else {
                     setTrained(false);
@@ -785,11 +805,25 @@ const MLTrainingPage = ({project, onBack, onUseInBlocks, onUpdateProject, onNewP
                         getMobileNet(s => setStatus(s)).then(net => {
                             if (!signal.cancelled) mobileNetRef.current = net;
                         }).catch(() => {});
+                        trained = true;
                         setTrained(true);
                     }
                 } else {
                     setTrained(false);
                 }
+            }
+            /* Always register model type so the blocks editor knows this is an IMAGE project. */
+            if (!signal.cancelled) {
+                setActiveModel({
+                    projectId:     project.id,
+                    projectName:   project.name,
+                    type:          'images',
+                    labels:        finalLabels,
+                    classifier:    classifierRef.current,
+                    mobileNet:     mobileNetRef.current,
+                    trainingStatus: trained ? 'ready' : 'idle',
+                    _trainingAPI:  trainingAPIRef
+                });
             }
         } finally {
             if (!signal.cancelled) setLoadingData(false);
@@ -815,7 +849,7 @@ const MLTrainingPage = ({project, onBack, onUseInBlocks, onUpdateProject, onNewP
         } catch (_) { /* not in Electron */ }
     }, [loadFromDisk]);
 
-    /* ── Persist metadata ── */
+    /* ── Persist metadata — auto-save so training data survives navigation ── */
     useEffect(() => {
         if (loadingData) return;
         const metaOnly = {};
@@ -823,6 +857,8 @@ const MLTrainingPage = ({project, onBack, onUseInBlocks, onUpdateProject, onNewP
             metaOnly[lbl] = (exs || []).map(ex => ex.type === 'image' ? {id: ex.id, type: 'image'} : ex);
         }
         onUpdateProject({...project, labels, trainingData: metaOnly, trained: isTrained, updatedAt: Date.now()});
+        saveImageProject(project, labels, disabledLabels, trainingData, classifierRef.current, {showDialog: false})
+            .catch(() => {});
     }, [labels, trainingData, isTrained]); // eslint-disable-line react-hooks/exhaustive-deps
 
     /* ── Add images ── */
@@ -1007,27 +1043,26 @@ const MLTrainingPage = ({project, onBack, onUseInBlocks, onUpdateProject, onNewP
     /* ── Export: deploy model to blocks and navigate ── */
     const handleExportModel = () => {
         deployModel();
+        try { window.require('electron').ipcRenderer.send('ml-set-pending-project', project.id); } catch (_) {}
         onUseInBlocks();
     };
 
-    /* ── SVG curves ── */
+    /* ── SVG curves — canvas no longer scrolls, only classesColumn does ── */
     const recalcCurves = useCallback(() => {
         if (!canvasRef.current || !trainCardRef.current || !testCardRef.current) return;
         const canvasEl   = canvasRef.current;
         const canvasRect = canvasEl.getBoundingClientRect();
         const trainRect  = trainCardRef.current.getBoundingClientRect();
         const testRect   = testCardRef.current.getBoundingClientRect();
-        const scrollLeft = canvasEl.scrollLeft;
-        const scrollTop  = canvasEl.scrollTop;
         const paths = [];
 
         classCardRefs.current.forEach((r, i) => {
             if (!r) return;
             const rect = r.getBoundingClientRect();
-            const x1 = rect.right - canvasRect.left + scrollLeft;
-            const y1 = rect.top + rect.height / 2 - canvasRect.top + scrollTop;
-            const x2 = trainRect.left - canvasRect.left + scrollLeft;
-            const y2 = trainRect.top + trainRect.height / 2 - canvasRect.top + scrollTop;
+            const x1 = rect.right - canvasRect.left;
+            const y1 = rect.top + rect.height / 2 - canvasRect.top;
+            const x2 = trainRect.left - canvasRect.left;
+            const y2 = trainRect.top + trainRect.height / 2 - canvasRect.top;
             const cx = Math.max(40, (x2 - x1) / 2);
             paths.push({
                 color: CLASS_COLORS[i % CLASS_COLORS.length],
@@ -1035,10 +1070,10 @@ const MLTrainingPage = ({project, onBack, onUseInBlocks, onUpdateProject, onNewP
             });
         });
 
-        const tx1 = trainRect.right - canvasRect.left + scrollLeft;
-        const ty1 = trainRect.top + trainRect.height / 2 - canvasRect.top + scrollTop;
-        const tx2 = testRect.left - canvasRect.left + scrollLeft;
-        const ty2 = testRect.top + testRect.height / 2 - canvasRect.top + scrollTop;
+        const tx1 = trainRect.right - canvasRect.left;
+        const ty1 = trainRect.top + trainRect.height / 2 - canvasRect.top;
+        const tx2 = testRect.left - canvasRect.left;
+        const ty2 = testRect.top + testRect.height / 2 - canvasRect.top;
         const tcx = Math.max(40, (tx2 - tx1) / 2);
         paths.push({
             color: '#9966FF',
@@ -1062,9 +1097,7 @@ const MLTrainingPage = ({project, onBack, onUseInBlocks, onUpdateProject, onNewP
         activeLabels.length >= 2 &&
         activeLabels.every(l => (trainingData[l] || []).length >= 10);
 
-    if (loadingData) {
-        return <Loader messageId="gui.loader.headline" />;
-    }
+    if (loadingData) return <MLLoader message="Loading project data…" />;
 
     return (
         <>
@@ -1141,8 +1174,8 @@ const MLTrainingPage = ({project, onBack, onUseInBlocks, onUpdateProject, onNewP
                     ))}
                 </svg>
 
-                {/* Classes column */}
-                <div className={styles.classesColumn}>
+                {/* Classes column — scrolls independently */}
+                <div className={styles.classesColumn} onScroll={recalcCurves}>
                     {labels.map((lbl, i) => (
                         <ClassCard
                             key={lbl}
@@ -1171,9 +1204,8 @@ const MLTrainingPage = ({project, onBack, onUseInBlocks, onUpdateProject, onNewP
                     <button className={styles.addClassCard} onClick={addClass}>+ Add Class</button>
                 </div>
 
-                {/* Right: Training + Testing */}
-                <div className={styles.rightArea}>
-                    {/* Training card */}
+                {/* Training column — stays fixed */}
+                <div className={styles.trainingColumn}>
                     <div className={styles.trainingCard} ref={trainCardRef}>
                         <div className={styles.trainingHeader}>
                             <span>Training</span>
@@ -1257,7 +1289,10 @@ const MLTrainingPage = ({project, onBack, onUseInBlocks, onUpdateProject, onNewP
                         )}
                     </div>
 
-                    {/* Testing card */}
+                </div>
+
+                {/* Testing column — stays fixed */}
+                <div className={styles.testingColumn}>
                     <div className={styles.testingCard} ref={testCardRef}>
                         <div className={styles.testingHeader}>
                             <span>Testing</span>

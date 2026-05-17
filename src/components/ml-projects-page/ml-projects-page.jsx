@@ -9,7 +9,7 @@ const TYPE_LABELS = {
     sounds: 'Sound Classifier'
 };
 
-const MLProjectsPage = ({ projects = [], onBack, onCreate, onOpen, onDelete, onImport, onExport }) => {
+const MLProjectsPage = ({ projects = [], loading = false, onBack, onCreate, onOpen, onDelete, onImport, onExport }) => {
     const [search, setSearch] = useState('');
     const [menuOpenId, setMenuOpenId] = useState(null);
     const [fileMenuOpen, setFileMenuOpen] = useState(false);
@@ -67,7 +67,7 @@ const MLProjectsPage = ({ projects = [], onBack, onCreate, onOpen, onDelete, onI
     };
 
     const formatDate = project => {
-        const raw = project.updatedAt || project.createdAt;
+        const raw = project.updatedAt || project.createdAt || project.savedAt;
         if (!raw) return '—';
         return new Date(raw).toLocaleString();
     };
@@ -134,7 +134,9 @@ const MLProjectsPage = ({ projects = [], onBack, onCreate, onOpen, onDelete, onI
 
             {/* Main content */}
             <div className={styles.tableWrap}>
-                {filtered.length === 0 ? (
+                {loading ? (
+                    <div className={styles.emptyState}>Loading projects…</div>
+                ) : filtered.length === 0 ? (
                     <div className={styles.emptyState}>
                         {search
                             ? `No projects match "${search}".`

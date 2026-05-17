@@ -81,7 +81,7 @@
     position: absolute;
     top: 100%;
     left: 0;
-    background: #5c1a8a;
+    background: #9966FF;
     border-radius: 0 0 4px 4px;
     box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
     z-index: 1000;
@@ -205,18 +205,17 @@
 }
 .webcamSelect:focus { border-color: #9966FF; outline: none; }
 
-/* ── Canvas (main area) ── */
+/* ── Canvas (fixed — only classes column scrolls) ── */
 .canvas {
     flex: 1;
     background: #f0f0f0;
-    overflow: auto;
+    overflow: hidden;
     position: relative;
-    display: grid;
-    grid-template-columns: minmax(280px, 42%) 1fr;
-    grid-template-rows: 1fr;
-    align-items: center;
+    display: flex;
+    flex-direction: row;
+    align-items: stretch;
     padding: 28px 24px;
-    gap: 0 28px;
+    gap: 28px;
     min-height: 0;
 }
 
@@ -231,14 +230,45 @@
     overflow: visible;
 }
 
-/* ── Left: classes column ── */
+/* ── Left: classes column — scrolls independently ── */
 .classesColumn {
+    flex: 0 0 42%;
+    min-width: 280px;
+    max-width: 500px;
     display: flex;
     flex-direction: column;
     gap: 16px;
+    flex-shrink: 0;
     position: relative;
     z-index: 2;
-    align-self: start;
+    overflow-y: auto;
+    overflow-x: hidden;
+    padding-bottom: 16px;
+}
+
+/* ── Training column — stationary center column ── */
+.trainingColumn {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    position: relative;
+    z-index: 2;
+    padding: 0 12px;
+    min-width: 0;
+}
+
+/* ── Testing column — stationary right column ── */
+.testingColumn {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    position: relative;
+    z-index: 2;
+    min-width: 0;
 }
 
 /* ── Class card ── */
@@ -248,6 +278,7 @@
     overflow: hidden;
     box-shadow: 0 4px 16px rgba(0, 0, 0, 0.10), 0 1px 3px rgba(0,0,0,0.06);
     transition: opacity 0.2s, box-shadow 0.2s;
+    flex-shrink: 0;
 }
 .classCard:hover {
     box-shadow: 0 6px 24px rgba(153, 102, 255, 0.16), 0 2px 6px rgba(0,0,0,0.08);
@@ -548,22 +579,12 @@
     background: rgba(255,255,255,0.7);
     transition: background 0.2s, border-color 0.2s, box-shadow 0.2s;
     width: 100%;
+    flex-shrink: 0;
 }
 .addClassCard:hover {
     background: rgba(153, 102, 255, 0.07);
     border-color: #9966FF;
     box-shadow: 0 2px 12px rgba(153,102,255,0.15);
-}
-
-/* ── Right area: Training + Testing ── */
-.rightArea {
-    display: flex;
-    gap: 24px;
-    align-items: center;
-    justify-content: center;
-    align-self: center;
-    position: relative;
-    z-index: 2;
 }
 
 /* ── Training card ── */
@@ -572,9 +593,7 @@
     border-radius: 12px;
     overflow: hidden;
     box-shadow: 0 4px 20px rgba(153, 102, 255, 0.18), 0 1px 4px rgba(0,0,0,0.08);
-    flex: 1;
-    min-width: 240px;
-    max-width: 360px;
+    width: 280px;
     position: relative;
     z-index: 2;
 }
@@ -775,9 +794,7 @@
     border-radius: 12px;
     overflow: hidden;
     box-shadow: 0 4px 20px rgba(153, 102, 255, 0.18), 0 1px 4px rgba(0,0,0,0.08);
-    flex: 1;
-    min-width: 220px;
-    max-width: 340px;
+    width: 260px;
     position: relative;
     z-index: 2;
 }

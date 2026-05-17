@@ -658,3 +658,138 @@ export const loadAudioModelFromArtifacts = async (modelJsonStr, weightData, labe
         return false;
     }
 };
+
+/* ═════════════════════════════════════════════════════════════════
+   TEXT CLASSIFICATION ENGINE  (Naive Bayes + Porter stemmer)
+   Zero GPU dependency, zero model downloads, instantaneous training.
+   Uses the same bayes-classifier package as PictoBlox:
+     addDocument(text, label) → tokenise+stem → train() → classify()
+   Model state is a plain JSON object — no weights.bin, no TF.js IO.
+   ═════════════════════════════════════════════════════════════════ */
+
+let _bayesClassifier = null;
+let _textLabels      = null;
+
+const _loadBayes = () =>
+    import(/* webpackChunkName: "bayes" */ 'bayes-classifier')
+        .then(m => m.default || m);
+
+export const trainText = async (labels, trainingData, projectId, onStatus, onProgress) => {
+    const total = labels.reduce((s, l) => s + (trainingData[l] || []).length, 0);
+    if (total < 2)
+        throw new Error('Need at least 2 training examples total.');
+    if (!labels.every(l => (trainingData[l] || []).length >= 1))
+        throw new Error('Every class needs at least 1 example.');
+
+    onProgress && onProgress(10);
+    onStatus && onStatus('Training text classifier…');
+
+    const BayesClassifier = await _loadBayes();
+    const classifier = new BayesClassifier();
+
+    for (const lbl of labels) {
+        for (const ex of (trainingData[lbl] || [])) {
+            const text = (ex.text || '').trim();
+            if (text) classifier.addDocument(text, lbl);
+        }
+    }
+
+    classifier.train();
+
+    onProgress && onProgress(80);
+
+    /* Persist: plain JSON state — no binary weights file required */
+    const state = {
+        docs:          classifier.docs,
+        lastAdded:     classifier.docs.length,
+        features:      classifier.features,
+        classFeatures: classifier.classFeatures,
+        classTotals:   classifier.classTotals,
+        totalExamples: classifier.totalExamples,
+        smoothing:     classifier.smoothing
+    };
+    await fsWriteFile(projectId, 'text-model/classifier.json',
+        JSON.stringify({state, labels}));
+
+    _bayesClassifier = classifier;
+    _textLabels      = labels;
+
+    onStatus && onStatus('Training Complete');
+    onProgress && onProgress(100);
+    return {classifier, labels};
+};
+
+/* ── Public: classify a text string using the Naive Bayes model ── */
+export const classifyText = async text => {
+    if (!_bayesClassifier)
+        throw new Error('No text model loaded. Train a model first.');
+
+    const clsns = _bayesClassifier.getClassifications((text || '').trim());
+    const labels = _textLabels;
+
+    /* getClassifications returns raw probability scores; normalise to sum=1 */
+    const sum = clsns.reduce((s, c) => s + c.value, 0) || 1;
+    const confidences = {};
+    let topI = 0;
+    labels.forEach((lbl, i) => {
+        const c = clsns.find(x => x.label === lbl);
+        confidences[String(i)] = c ? c.value / sum : 0;
+        if (confidences[String(i)] > (confidences[String(topI)] || 0)) topI = i;
+    });
+
+    return {label: labels[topI] || '', classIndex: topI, confidences};
+};
+
+/* ── Text model export / import (JSON — no binary weights) ── */
+export const exportTextModelArtifacts = async () => {
+    if (!_bayesClassifier || !_textLabels) return null;
+    const state = {
+        docs:          _bayesClassifier.docs,
+        lastAdded:     _bayesClassifier.docs.length,
+        features:      _bayesClassifier.features,
+        classFeatures: _bayesClassifier.classFeatures,
+        classTotals:   _bayesClassifier.classTotals,
+        totalExamples: _bayesClassifier.totalExamples,
+        smoothing:     _bayesClassifier.smoothing
+    };
+    return {modelJson: JSON.stringify({state, labels: _textLabels}), weightData: null};
+};
+
+export const loadTextModelFromArtifacts = async (modelJsonStr, _weightData, labels, projectId) => {
+    try {
+        const BayesClassifier = await _loadBayes();
+        const {state, labels: savedLbls} = JSON.parse(modelJsonStr);
+        const classifier = new BayesClassifier();
+        classifier.restore(state);
+        const effectiveLabels = labels || savedLbls;
+        if (projectId) {
+            await fsWriteFile(projectId, 'text-model/classifier.json',
+                JSON.stringify({state, labels: effectiveLabels}));
+        }
+        _bayesClassifier = classifier;
+        _textLabels      = effectiveLabels;
+        return true;
+    } catch (e) {
+        console.warn('[ml-engine] loadTextModelFromArtifacts failed:', e.message);
+        return false;
+    }
+};
+
+/* ── Public: restore saved text classifier from filesystem ── */
+export const loadTextClassifier = async (projectId, labels) => {
+    try {
+        const raw = await fsReadFile(projectId, 'text-model/classifier.json');
+        if (!raw) return null;
+        const BayesClassifier = await _loadBayes();
+        const {state, labels: savedLbls} = JSON.parse(
+            Buffer.from(raw).toString('utf8')
+        );
+        const classifier = new BayesClassifier();
+        classifier.restore(state);
+        _bayesClassifier = classifier;
+        _textLabels      = labels || savedLbls;
+        return {classifier, labels: _textLabels};
+    } catch (_) {
+        return null;
+    }
+};
