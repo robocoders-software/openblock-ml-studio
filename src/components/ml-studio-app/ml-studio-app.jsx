@@ -92,6 +92,8 @@ const MLStudioApp = ({onEnterBlocks, onBack}) => {
         deleteProjectData(id).catch(() => {});
         const ipc = getIpc();
         if (ipc) ipc.invoke('ml-delete-project', id).catch(() => {});
+        // Clear pending project in main process so will-download doesn't try to bundle deleted dir
+        if (ipc) ipc.send('ml-clear-pending-project', id);
         /* If the deleted project was the active model, clear the global ref and
            notify app.jsx so it doesn't restore the deleted model on Back. */
         if (typeof window !== 'undefined' &&

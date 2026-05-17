@@ -8,3 +8,6 @@ export {default as MLTrainingPage}     from './components/ml-training-page/ml-tr
 
 /* Engine utilities (for use by the Blocks extensions) */
 export * from './lib/ml-engine.js';
+
+/* Persistence helpers (load functions call setActiveModel internally) */
+export {loadImageProject, loadAudioProject, loadTextProject} from './lib/project-persistence.js';

@@ -515,6 +515,15 @@ const TextTrainingPage = ({
             setTrained(true);
             setTrainPct(100);
             saveTextProject(project, labels, trainingData, true, {showDialog: false}).catch(() => {});
+            setActiveModel({
+                projectId:      project.id,
+                projectName:    project.name,
+                type:           'text',
+                labels:         activeLabels,
+                trainingStatus: 'ready',
+                classifyText,
+                _trainingAPI:   trainingAPIRef
+            });
         } catch (err) {
             setStatus(`Error: ${err.message}`);
             console.error('[TextTrain]', err);

@@ -979,6 +979,16 @@ const MLTrainingPage = ({project, onBack, onUseInBlocks, onUpdateProject, onNewP
             /* Cache ML data so the next normal blocks save includes the trained model */
             saveImageProject(project, labels, disabledLabels, trainingData, classifier, {showDialog: false})
                 .catch(() => {});
+            setActiveModel({
+                projectId:     project.id,
+                projectName:   project.name,
+                type:          'images',
+                labels:        activeLabels,
+                trainingStatus: 'ready',
+                classifier,
+                mobileNet:     net,
+                _trainingAPI:  trainingAPIRef
+            });
             setStatus('Evaluating model…');
 
             // Run evaluation for report (non-blocking)

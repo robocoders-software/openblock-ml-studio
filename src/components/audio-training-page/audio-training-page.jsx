@@ -970,6 +970,15 @@ const AudioTrainingPage = ({project, onBack, onUseInBlocks, onUpdateProject, onN
             /* Cache ML data so the next normal blocks save includes the trained model */
             saveAudioProject(project, labels, disabledLabels, trainingData, true, {showDialog: false})
                 .catch(() => {});
+            setActiveModel({
+                projectId:      project.id,
+                projectName:    project.name,
+                type:           'sounds',
+                labels:         activeTrainLabels,
+                trainingStatus: 'ready',
+                startListening,
+                stopListening
+            });
         } catch (err) {
             setStatus(`Error: ${err.message}`);
             console.error('[AudioTrain]', err);

@@ -19,7 +19,7 @@
 import {fsWriteFile, loadProjectImagesFromFS, loadProjectAudioFromFS} from './ml-fs.js';
 import {
     loadImageClassifier, getMobileNet,
-    loadSoundClassifier,
+    loadSoundClassifier, startListening, stopListening,
     loadTextClassifier, classifyText,
     setActiveModel
 } from './ml-engine.js';
@@ -216,6 +216,17 @@ export const loadAudioProject = async (projectId) => {
         try {
             const cls = await loadSoundClassifier(projectId, savedLabels);
             modelRestored = !!cls;
+            if (cls) {
+                setActiveModel({
+                    projectId,
+                    projectName:    meta.name || '',
+                    type:           'sounds',
+                    labels:         savedLabels,
+                    trainingStatus: 'ready',
+                    startListening,
+                    stopListening
+                });
+            }
         } catch (e) {
             console.warn('[persistence] audio model load failed:', e.message);
         }
