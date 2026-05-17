@@ -9,10 +9,14 @@ const TYPE_LABELS = {
     sounds: 'Sound Classifier'
 };
 
-const MLProjectsPage = ({ projects = [], loading = false, onBack, onCreate, onOpen, onDelete, onImport, onExport }) => {
+const MLProjectsPage = ({ projects = [], loading = false, onBack, onCreate, onOpen, onDelete, onRename, onUpdateDescription, onImport, onExport }) => {
     const [search, setSearch] = useState('');
     const [menuOpenId, setMenuOpenId] = useState(null);
     const [fileMenuOpen, setFileMenuOpen] = useState(false);
+    const [renamingId, setRenamingId] = useState(null);
+    const [renameValue, setRenameValue] = useState('');
+    const [descEditId, setDescEditId] = useState(null);
+    const [descValue, setDescValue] = useState('');
     const fileMenuRef = useRef(null);
 
     useEffect(() => {
@@ -44,6 +48,45 @@ const MLProjectsPage = ({ projects = [], loading = false, onBack, onCreate, onOp
         e.stopPropagation();
         setMenuOpenId(null);
         onDelete && onDelete(project);
+    };
+
+    const handleRenameStart = (e, project) => {
+        e.stopPropagation();
+        setMenuOpenId(null);
+        setRenamingId(project.id || project.name);
+        setRenameValue(project.name);
+    };
+
+    const commitRename = project => {
+        const trimmed = renameValue.trim();
+        if (trimmed && trimmed !== project.name) {
+            onRename && onRename(project, trimmed);
+        }
+        setRenamingId(null);
+    };
+
+    const handleRenameKey = (e, project) => {
+        if (e.key === 'Enter') { e.preventDefault(); commitRename(project); }
+        if (e.key === 'Escape') { setRenamingId(null); }
+    };
+
+    const handleDescEdit = (e, project) => {
+        e.stopPropagation();
+        setDescEditId(project.id || project.name);
+        setDescValue(project.description || '');
+    };
+
+    const commitDescEdit = project => {
+        const trimmed = descValue.trim();
+        if (trimmed !== (project.description || '').trim()) {
+            onUpdateDescription && onUpdateDescription(project, trimmed);
+        }
+        setDescEditId(null);
+    };
+
+    const handleDescKey = (e, project) => {
+        if (e.key === 'Enter') { e.preventDefault(); commitDescEdit(project); }
+        if (e.key === 'Escape') { setDescEditId(null); }
     };
 
     const handleExport = (e, project) => {
@@ -89,8 +132,6 @@ const MLProjectsPage = ({ projects = [], loading = false, onBack, onCreate, onOp
                         {fileMenuOpen && (
                             <div className={styles.navDropdown}>
                                 <button onClick={() => { setFileMenuOpen(false); onCreate && onCreate(); }}>New ML Project</button>
-                                <button onClick={() => { setFileMenuOpen(false); onImport && onImport(); }}>Open ML Project</button>
-                                <button onClick={() => { setFileMenuOpen(false); document.documentElement.requestFullscreen && document.documentElement.requestFullscreen(); }}>Full Screen Recording</button>
                             </div>
                         )}
                     </div>
@@ -127,9 +168,6 @@ const MLProjectsPage = ({ projects = [], loading = false, onBack, onCreate, onOp
                 <button className={styles.createBtn} onClick={onCreate}>
                     Create New Project
                 </button>
-                <button className={styles.importBtn} onClick={onImport}>
-                    Open ML Project
-                </button>
             </div>
 
             {/* Main content */}
@@ -163,8 +201,41 @@ const MLProjectsPage = ({ projects = [], loading = false, onBack, onCreate, onOp
                                         onClick={e => handleRowClick(project, e)}
                                     >
                                         <td>
-                                            <div className={styles.projName}>{project.name}</div>
-                                            <div className={styles.projSub}>{project.name}</div>
+                                            {renamingId === rowKey ? (
+                                                <input
+                                                    className={styles.renameInput}
+                                                    autoFocus
+                                                    value={renameValue}
+                                                    onChange={e => setRenameValue(e.target.value)}
+                                                    onBlur={() => commitRename(project)}
+                                                    onKeyDown={e => handleRenameKey(e, project)}
+                                                    onClick={e => e.stopPropagation()}
+                                                />
+                                            ) : (
+                                                <>
+                                                    <div className={styles.projName}>{project.name}</div>
+                                                    {descEditId === rowKey ? (
+                                                        <input
+                                                            className={styles.descEditInput}
+                                                            autoFocus
+                                                            value={descValue}
+                                                            placeholder="Add a description…"
+                                                            onChange={e => setDescValue(e.target.value)}
+                                                            onBlur={() => commitDescEdit(project)}
+                                                            onKeyDown={e => handleDescKey(e, project)}
+                                                            onClick={e => e.stopPropagation()}
+                                                        />
+                                                    ) : (
+                                                        <div
+                                                            className={project.description ? styles.projSub : styles.projSubAdd}
+                                                            onClick={e => handleDescEdit(e, project)}
+                                                            title={project.description ? 'Click to edit description' : 'Click to add description'}
+                                                        >
+                                                            {project.description || '+ Add description'}
+                                                        </div>
+                                                    )}
+                                                </>
+                                            )}
                                         </td>
                                         <td>
                                             <span className={styles.typeBadge}>
@@ -191,10 +262,22 @@ const MLProjectsPage = ({ projects = [], loading = false, onBack, onCreate, onOp
                                             </button>
                                             {menuOpenId === rowKey && (
                                                 <div className={styles.dropdown}>
-                                                    <button onClick={e => handleExport(e, project)}>
+                                                    <button
+                                                        className={styles.dropdownAction}
+                                                        onClick={e => handleRenameStart(e, project)}
+                                                    >
+                                                        Rename
+                                                    </button>
+                                                    <button
+                                                        className={styles.dropdownAction}
+                                                        onClick={e => handleExport(e, project)}
+                                                    >
                                                         Export
                                                     </button>
-                                                    <button onClick={e => handleDelete(e, project)}>
+                                                    <button
+                                                        className={styles.dropdownDanger}
+                                                        onClick={e => handleDelete(e, project)}
+                                                    >
                                                         Delete
                                                     </button>
                                                 </div>

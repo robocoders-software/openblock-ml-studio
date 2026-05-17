@@ -54,29 +54,37 @@ const MLStudioApp = ({onEnterBlocks, onBack}) => {
     }, []);
 
     /* ── Project CRUD ── */
-    const createProject = useCallback(({name, type}) => {
+    const createProject = useCallback(({name, type, description}) => {
+        /* Guard against duplicate names */
+        const alreadyExists = projects.some(
+            p => p.name.toLowerCase() === name.toLowerCase()
+        );
+        if (alreadyExists) return;
+
         const p = {
-            id:          generateId(),
+            id:           generateId(),
             name,
+            description:  description || '',
             type,
-            labels:      ['Class 1', 'Class 2'],
+            labels:       ['Class 1', 'Class 2'],
             trainingData: {},
-            trained:     false,
-            createdAt:   Date.now(),
-            updatedAt:   Date.now()
+            trained:      false,
+            createdAt:    Date.now(),
+            updatedAt:    Date.now()
         };
         /* Write the initial project.json to disk immediately so it shows up in the list */
         const ipc = getIpc();
         if (ipc) {
             const saveData = JSON.stringify({
-                id:        p.id,
-                name:      p.name,
-                type:      p.type,
-                labels:    p.labels,
-                trained:   false,
-                createdAt: p.createdAt,
-                updatedAt: p.updatedAt,
-                savedAt:   p.createdAt
+                id:          p.id,
+                name:        p.name,
+                description: p.description,
+                type:        p.type,
+                labels:      p.labels,
+                trained:     false,
+                createdAt:   p.createdAt,
+                updatedAt:   p.updatedAt,
+                savedAt:     p.createdAt
             });
             ipc.invoke('ml-write-file', p.id, 'project.json', saveData).catch(() => {});
         }
@@ -85,7 +93,7 @@ const MLStudioApp = ({onEnterBlocks, onBack}) => {
         setView('mlTraining');
         /* Refresh list after a short delay so the new project.json is on disk */
         setTimeout(refreshProjects, 500);
-    }, [refreshProjects]);
+    }, [refreshProjects, projects]);
 
     const deleteProject = useCallback(projectOrId => {
         const id = typeof projectOrId === 'string' ? projectOrId : projectOrId.id;
@@ -106,6 +114,58 @@ const MLStudioApp = ({onEnterBlocks, onBack}) => {
         setProjects(prev => prev.filter(p => p.id !== id));
         setTimeout(refreshProjects, 300);
     }, [refreshProjects]);
+
+    const renameProject = useCallback((project, newName) => {
+        const trimmed = newName.trim();
+        if (!trimmed || trimmed === project.name) return;
+        /* Prevent duplicate names (case-insensitive) */
+        const isDuplicate = projects.some(
+            p => p.id !== project.id && p.name.toLowerCase() === trimmed.toLowerCase()
+        );
+        if (isDuplicate) return;
+        const updatedAt = Date.now();
+        setProjects(prev => prev.map(p =>
+            p.id === project.id ? {...p, name: trimmed, updatedAt} : p
+        ));
+        const ipc = getIpc();
+        if (ipc) {
+            const saveData = JSON.stringify({
+                id:          project.id,
+                name:        trimmed,
+                description: project.description || '',
+                type:        project.type,
+                labels:      project.labels || [],
+                trained:     project.trained || false,
+                createdAt:   project.createdAt,
+                updatedAt,
+                savedAt:     project.savedAt || project.updatedAt || updatedAt
+            });
+            ipc.invoke('ml-write-file', project.id, 'project.json', saveData).catch(() => {});
+        }
+    }, [projects]);
+
+    const updateProjectDescription = useCallback((project, newDesc) => {
+        const trimmed = newDesc.trim();
+        const updatedAt = Date.now();
+        setProjects(prev => prev.map(p =>
+            p.id === project.id ? {...p, description: trimmed, updatedAt} : p
+        ));
+        const ipc = getIpc();
+        if (ipc) {
+            const saveData = JSON.stringify({
+                id:          project.id,
+                name:        project.name,
+                description: trimmed,
+                type:        project.type,
+                labels:      project.labels || [],
+                trained:     project.trained || false,
+                createdAt:   project.createdAt,
+                updatedAt,
+                savedAt:     project.savedAt || project.updatedAt || updatedAt
+            });
+            ipc.invoke('ml-write-file', project.id, 'project.json', saveData).catch(() => {});
+        }
+    }, []);
 
     const updateProject = useCallback(updated => {
         setActive(updated);
@@ -207,12 +267,15 @@ const MLStudioApp = ({onEnterBlocks, onBack}) => {
                 onCreate={() => setShowCreate(true)}
                 onOpen={handleOpenProject}
                 onDelete={deleteProject}
+                onRename={renameProject}
+                onUpdateDescription={updateProjectDescription}
                 onImport={importProject}
             />
             {showCreateModal && (
                 <CreateProjectModal
                     onCancel={() => setShowCreate(false)}
                     onCreate={createProject}
+                    existingNames={projects.map(p => p.name)}
                 />
             )}
         </>

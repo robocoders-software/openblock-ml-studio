@@ -1,4 +1,4 @@
-/* ── Overlay scrolls — most reliable approach in Electron/Chromium ── */
+﻿/* ── Overlay scrolls — most reliable approach in Electron/Chromium ── */
 .overlay {
     position: fixed;
     inset: 0;
@@ -58,7 +58,7 @@
 .chartSvg { display: block; width: 100%; }
 .chartLegend {
     display: flex; gap: 18px; justify-content: flex-end;
-    padding: 6px 16px 10px; border-top: 1px solid #f0e8ff;
+    padding: 6px 16px 10px; border-top: 1px solid #E8F2FF;
 }
 .legendItem {
     display: flex; align-items: center; gap: 6px;
@@ -115,7 +115,7 @@
 .classwiseLeft { flex: 1; display: flex; flex-direction: column; gap: 14px; min-width: 0; }
 .classwiseRight { width: 380px; flex-shrink: 0; }
 .selectedClassTitle {
-    font-size: 15px; font-weight: 700; color: #6633cc; text-align: center;
+    font-size: 15px; font-weight: 700; color: #003A8C; text-align: center;
     padding-bottom: 8px; border-bottom: 1px solid #e8d6f5;
 }
 .analysisSection { border: 1px solid #e8d6f5; border-radius: 8px; overflow: hidden; }
@@ -140,7 +140,7 @@
 
 /* Metrics table */
 .metricsTable { width: 100%; border-collapse: collapse; font-size: 12px; }
-.metricsTable thead tr { background: #f5f0ff; }
+.metricsTable thead tr { background: #F0F5FF; }
 .metricsTable th {
     padding: 8px 10px; text-align: center;
     font-size: 11px; font-weight: 700; color: #555;
@@ -150,8 +150,8 @@
     cursor: pointer; transition: background 0.15s;
 }
 .metricsRow:hover { background: #faf5ff; }
-.metricsRowActive { background: #f0e8ff; }
-.metricsTable td { padding: 7px 10px; text-align: center; border-bottom: 1px solid #f0e8ff; }
+.metricsRowActive { background: #E8F2FF; }
+.metricsTable td { padding: 7px 10px; text-align: center; border-bottom: 1px solid #E8F2FF; }
 
 /* Evaluating state */
 .evaluatingMsg {
@@ -161,7 +161,7 @@
 }
 .evalSpinner {
     width: 36px; height: 36px; border-radius: 50%;
-    border: 3px solid #e0ccff; border-top-color: #9966ff;
+    border: 3px solid #CCE0FF; border-top-color: #004AAD;
     animation: spin 0.8s linear infinite;
 }
 @keyframes spin { to { transform: rotate(360deg); } }

@@ -1,4 +1,4 @@
-import React, {useState, useRef, useEffect, useLayoutEffect, useCallback} from 'react';
+﻿import React, {useState, useRef, useEffect, useLayoutEffect, useCallback} from 'react';
 import PropTypes from 'prop-types';
 import styles from './ml-training-page.css';
 import AudioTrainingPage from '../audio-training-page/audio-training-page.jsx';
@@ -23,7 +23,7 @@ import {
 import {saveImageProject, loadImageProject} from '../../lib/project-persistence.js';
 import TrainReportModal from './TrainReportModal.jsx';
 
-const CLASS_COLORS = ['#E05C3D', '#2EAA7E', '#9966FF', '#774DCB', '#F39C12', '#E91E63', '#1ABC9C', '#E67E22'];
+const CLASS_COLORS = ['#E05C3D', '#2EAA7E', '#004AAD', '#003A8C', '#F39C12', '#E91E63', '#1ABC9C', '#E67E22'];
 const MAX_THUMBS   = 9;
 const generateId   = () => Math.random().toString(36).slice(2, 10);
 
@@ -46,7 +46,7 @@ const AccuracyChart = ({points}) => {
         <svg width={W} height={H} style={{display: 'block', margin: '0 auto', overflow: 'visible'}}>
             {yTicks.map(y => (
                 <g key={y}>
-                    <line x1={pL} y1={sy(y)} x2={W - pR} y2={sy(y)} stroke="#e8daf5" strokeWidth="1"/>
+                    <line x1={pL} y1={sy(y)} x2={W - pR} y2={sy(y)} stroke="#DAE8F5" strokeWidth="1"/>
                     <text x={pL - 4} y={sy(y) + 3} textAnchor="end" fontSize="8" fill="#aaa">{y.toFixed(1)}</text>
                 </g>
             ))}
@@ -55,8 +55,8 @@ const AccuracyChart = ({points}) => {
             ))}
             <line x1={pL} y1={pT} x2={pL} y2={H - pB} stroke="#ccc" strokeWidth="1"/>
             <line x1={pL} y1={H - pB} x2={W - pR} y2={H - pB} stroke="#ccc" strokeWidth="1"/>
-            <path d={lineD} stroke="#9966FF" strokeWidth="2.5" fill="none" strokeLinejoin="round" strokeLinecap="round"/>
-            <circle cx={sx(points[points.length - 1].x)} cy={sy(points[points.length - 1].y)} r="4" fill="#9966FF"/>
+            <path d={lineD} stroke="#004AAD" strokeWidth="2.5" fill="none" strokeLinejoin="round" strokeLinecap="round"/>
+            <circle cx={sx(points[points.length - 1].x)} cy={sy(points[points.length - 1].y)} r="4" fill="#004AAD"/>
             <text x={pL + cW / 2} y={H - 2} textAnchor="middle" fontSize="9" fill="#888">Accuracy Vs Epochs</text>
         </svg>
     );
@@ -724,6 +724,8 @@ const MLTrainingPage = ({project, onBack, onUseInBlocks, onUpdateProject, onNewP
     const [openMenuLabel,    setOpenMenuLabel]    = useState(null);
     const [fileMenuOpen,     setFileMenuOpen]     = useState(false);
     const [saveStatus,       setSaveStatus]       = useState('idle'); // 'idle' | 'saving' | 'saved' | 'error'
+    const [renamingProject,  setRenamingProject]  = useState(false);
+    const [renameValue,      setRenameValue]      = useState(project.name);
     const fileMenuRef = useRef(null);
 
     useEffect(() => {
@@ -1019,6 +1021,27 @@ const MLTrainingPage = ({project, onBack, onUseInBlocks, onUpdateProject, onNewP
     };
 
     /* ── Save project with user feedback ── */
+    const commitProjectRename = useCallback(() => {
+        const trimmed = renameValue.trim();
+        setRenamingProject(false);
+        if (!trimmed || trimmed === project.name) return;
+        onUpdateProject({...project, name: trimmed});
+        // Persist the new name to project.json immediately
+        const ipc = (() => { try { return window.require('electron').ipcRenderer; } catch (_) { return null; } })();
+        if (ipc) {
+            ipc.invoke('ml-write-file', project.id, 'project.json', JSON.stringify({
+                id:        project.id,
+                name:      trimmed,
+                type:      project.type,
+                labels:    labels || [],
+                trained:   isTrained,
+                createdAt: project.createdAt,
+                updatedAt: Date.now(),
+                savedAt:   project.savedAt || Date.now()
+            })).catch(() => {});
+        }
+    }, [renameValue, project, labels, isTrained, onUpdateProject]);
+
     const handleSave = useCallback(async () => {
         setSaveStatus('saving');
         try {
@@ -1086,7 +1109,7 @@ const MLTrainingPage = ({project, onBack, onUseInBlocks, onUpdateProject, onNewP
         const ty2 = testRect.top + testRect.height / 2 - canvasRect.top;
         const tcx = Math.max(40, (tx2 - tx1) / 2);
         paths.push({
-            color: '#9966FF',
+            color: '#004AAD',
             d: `M ${tx1} ${ty1} C ${tx1 + tcx} ${ty1} ${tx2 - tcx} ${ty2} ${tx2} ${ty2}`
         });
 
@@ -1128,13 +1151,9 @@ const MLTrainingPage = ({project, onBack, onUseInBlocks, onUpdateProject, onNewP
                             <div className={styles.navDropdown}>
                                 <button onClick={() => { setFileMenuOpen(false); (onNewProject || onBack)(); }}>New</button>
                                 <button onClick={() => { setFileMenuOpen(false); (onNewMLProject || onBack)(); }}>New ML Project</button>
-                                <button onClick={() => { setFileMenuOpen(false); (onOpenMLProject || onBack)(); }}>Open ML Project</button>
-                                <button onClick={() => { setFileMenuOpen(false); document.documentElement.requestFullscreen && document.documentElement.requestFullscreen(); }}>Full Screen Recording</button>
-                                <button onClick={() => setFileMenuOpen(false)}>Examples</button>
                             </div>
                         )}
                     </div>
-                    <button className={styles.navBtn}>Tutorials</button>
                     <button className={styles.navBtn}>Help</button>
                 </nav>
                 <div className={styles.headerSpacer} />
@@ -1145,14 +1164,34 @@ const MLTrainingPage = ({project, onBack, onUseInBlocks, onUpdateProject, onNewP
             <div className={styles.subHeader}>
                 <span className={styles.subHeaderType}>Image Classifier</span>
                 <span className={styles.infoIcon} title="Train a model to recognise images from your webcam or uploaded photos — then use it in your Blocks project.">
-                    <svg width="22" height="22" viewBox="0 0 24 24" fill="#9966FF" xmlns="http://www.w3.org/2000/svg">
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="#004AAD" xmlns="http://www.w3.org/2000/svg">
                         <circle cx="12" cy="12" r="11"/>
                         <circle cx="12" cy="8" r="1.3" fill="white"/>
                         <rect x="10.7" y="11" width="2.6" height="6" rx="1.3" fill="white"/>
                     </svg>
                 </span>
                 <div className={styles.divider}/>
-                <span className={styles.projectNamePill}>{project.name}</span>
+                {renamingProject ? (
+                    <input
+                        className={styles.projectNameInput}
+                        autoFocus
+                        value={renameValue}
+                        onChange={e => setRenameValue(e.target.value)}
+                        onBlur={commitProjectRename}
+                        onKeyDown={e => {
+                            if (e.key === 'Enter') { e.preventDefault(); commitProjectRename(); }
+                            if (e.key === 'Escape') { setRenameValue(project.name); setRenamingProject(false); }
+                        }}
+                    />
+                ) : (
+                    <span
+                        className={styles.projectNamePill}
+                        title="Click to rename"
+                        onClick={() => { setRenameValue(project.name); setRenamingProject(true); }}
+                    >
+                        {project.name}
+                    </span>
+                )}
                 <div className={styles.divider}/>
                 <button className={styles.uploadFolderBtn} onClick={() => folderInputRef.current && folderInputRef.current.click()}>
                     Upload Classes from Folder

@@ -1,4 +1,4 @@
-import React, {useState, useRef, useEffect, useLayoutEffect, useCallback} from 'react';
+﻿import React, {useState, useRef, useEffect, useLayoutEffect, useCallback} from 'react';
 import PropTypes from 'prop-types';
 import styles from './audio-training-page.css';
 import openblockLogo from '../openblock-logo.svg';
@@ -27,7 +27,7 @@ import {WaveformRenderer} from './waveform-renderer.js';
 import {computeRMS, blobToWavBlob} from '../../lib/audio-utils.js';
 import {saveAudioProject, loadAudioProject} from '../../lib/project-persistence.js';
 
-const CLASS_COLORS = ['#E05C3D', '#2EAA7E', '#9966FF', '#774DCB', '#F39C12', '#E91E63', '#1ABC9C', '#E67E22'];
+const CLASS_COLORS = ['#E05C3D', '#2EAA7E', '#004AAD', '#003A8C', '#F39C12', '#E91E63', '#1ABC9C', '#E67E22'];
 const MAX_THUMBS   = 9;
 const generateId   = () => Math.random().toString(36).slice(2, 10);
 
@@ -83,7 +83,7 @@ const AccuracyChart = ({points}) => {
         <svg width={W} height={H} style={{display: 'block', margin: '0 auto', overflow: 'visible'}}>
             {yTicks.map(y => (
                 <g key={y}>
-                    <line x1={pL} y1={sy(y)} x2={W - pR} y2={sy(y)} stroke="#e8daf5" strokeWidth="1"/>
+                    <line x1={pL} y1={sy(y)} x2={W - pR} y2={sy(y)} stroke="#DAE8F5" strokeWidth="1"/>
                     <text x={pL - 4} y={sy(y) + 3} textAnchor="end" fontSize="8" fill="#aaa">{y.toFixed(1)}</text>
                 </g>
             ))}
@@ -601,7 +601,7 @@ const AudioTestingPanel = ({isTrained, labels, labelColorMap}) => {
 
         const analyser = testAnalyserRef.current;
         const renderer = new WaveformRenderer(testCanvasRef.current, {
-            color:   '#9966FF',
+            color:   '#004AAD',
             bgColor: '#1a0a2e'
         });
         testRendererRef.current = renderer;
@@ -699,7 +699,7 @@ const AudioTestingPanel = ({isTrained, labels, labelColorMap}) => {
                             {labels.map(lbl => {
                                 const r     = results.find(x => x.label === lbl);
                                 const prob  = r ? (r.prob || 0) : 0;
-                                const color = (labelColorMap && labelColorMap[lbl]) || '#9966FF';
+                                const color = (labelColorMap && labelColorMap[lbl]) || '#004AAD';
                                 return (
                                     <div key={lbl} className={styles.testResultBar}>
                                         <div className={styles.testResultLabelRow}>
@@ -762,7 +762,9 @@ const AudioTrainingPage = ({project, onBack, onUseInBlocks, onUpdateProject, onN
     const [activeMicLabel, setActiveMicLabel] = useState(null);
     const [openMenuLabel,  setOpenMenuLabel]  = useState(null);
     const [fileMenuOpen,   setFileMenuOpen]   = useState(false);
-    const [saveStatus,     setSaveStatus]     = useState('idle'); // 'idle' | 'saving' | 'saved' | 'error'
+    const [saveStatus,      setSaveStatus]      = useState('idle'); // 'idle' | 'saving' | 'saved' | 'error'
+    const [renamingProject, setRenamingProject] = useState(false);
+    const [renameValue,     setRenameValue]     = useState(project.name);
     const fileMenuRef = useRef(null);
 
     useEffect(() => {
@@ -987,6 +989,23 @@ const AudioTrainingPage = ({project, onBack, onUseInBlocks, onUpdateProject, onN
         }
     };
 
+    /* ── Project rename ── */
+    const commitProjectRename = useCallback(() => {
+        const trimmed = renameValue.trim();
+        setRenamingProject(false);
+        if (!trimmed || trimmed === project.name) return;
+        onUpdateProject({...project, name: trimmed});
+        const ipc = (() => { try { return window.require('electron').ipcRenderer; } catch (_) { return null; } })();
+        if (ipc) {
+            ipc.invoke('ml-write-file', project.id, 'project.json', JSON.stringify({
+                id: project.id, name: trimmed, type: project.type,
+                labels: project.labels || [], trained: project.trained || false,
+                createdAt: project.createdAt, updatedAt: Date.now(),
+                savedAt: project.savedAt || Date.now()
+            })).catch(() => {});
+        }
+    }, [renameValue, project, onUpdateProject]);
+
     /* Persist ML project data to disk with user feedback. */
     const handleSaveProject = useCallback(async () => {
         setSaveStatus('saving');
@@ -1052,7 +1071,7 @@ const AudioTrainingPage = ({project, onBack, onUseInBlocks, onUpdateProject, onN
         const ty2 = testRect.top + testRect.height / 2 - wrapRect.top;
         const tcx = Math.max(40, (tx2 - tx1) / 2);
         paths.push({
-            color: '#9966FF',
+            color: '#004AAD',
             d: `M ${tx1} ${ty1} C ${tx1 + tcx} ${ty1} ${tx2 - tcx} ${ty2} ${tx2} ${ty2}`
         });
 
@@ -1116,13 +1135,9 @@ const AudioTrainingPage = ({project, onBack, onUseInBlocks, onUpdateProject, onN
                             <div className={styles.navDropdown}>
                                 <button onClick={() => { setFileMenuOpen(false); (onNewProject || onBack)(); }}>New</button>
                                 <button onClick={() => { setFileMenuOpen(false); (onNewMLProject || onBack)(); }}>New ML Project</button>
-                                <button onClick={() => { setFileMenuOpen(false); (onOpenMLProject || onBack)(); }}>Open ML Project</button>
-                                <button onClick={() => { setFileMenuOpen(false); document.documentElement.requestFullscreen && document.documentElement.requestFullscreen(); }}>Full Screen Recording</button>
-                                <button onClick={() => setFileMenuOpen(false)}>Examples</button>
                             </div>
                         )}
                     </div>
-                    <button className={styles.navBtn}>Tutorials</button>
                     <button className={styles.navBtn}>Help</button>
                 </nav>
                 <div className={styles.headerSpacer} />
@@ -1133,14 +1148,34 @@ const AudioTrainingPage = ({project, onBack, onUseInBlocks, onUpdateProject, onN
             <div className={styles.subHeader}>
                 <span className={styles.subHeaderType}>Audio Classifier</span>
                 <span className={styles.infoIcon} title="Train a model to recognise sounds from your microphone — then use it in your Blocks project.">
-                    <svg width="22" height="22" viewBox="0 0 24 24" fill="#9966FF" xmlns="http://www.w3.org/2000/svg">
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="#004AAD" xmlns="http://www.w3.org/2000/svg">
                         <circle cx="12" cy="12" r="11"/>
                         <circle cx="12" cy="8" r="1.3" fill="white"/>
                         <rect x="10.7" y="11" width="2.6" height="6" rx="1.3" fill="white"/>
                     </svg>
                 </span>
                 <div className={styles.divider}/>
-                <span className={styles.projectNamePill}>{project.name}</span>
+                {renamingProject ? (
+                    <input
+                        className={styles.projectNameInput}
+                        autoFocus
+                        value={renameValue}
+                        onChange={e => setRenameValue(e.target.value)}
+                        onBlur={commitProjectRename}
+                        onKeyDown={e => {
+                            if (e.key === 'Enter') { e.preventDefault(); commitProjectRename(); }
+                            if (e.key === 'Escape') { setRenameValue(project.name); setRenamingProject(false); }
+                        }}
+                    />
+                ) : (
+                    <span
+                        className={styles.projectNamePill}
+                        title="Click to rename"
+                        onClick={() => { setRenameValue(project.name); setRenamingProject(true); }}
+                    >
+                        {project.name}
+                    </span>
+                )}
                 <div className={styles.divider}/>
                 {/* engineStatus is shown in the full-page overlay while !engineReady */}
                 <button

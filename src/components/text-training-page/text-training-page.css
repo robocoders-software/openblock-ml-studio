@@ -1,4 +1,4 @@
-/* ── Text Training Page ── shares color tokens & layout with audio-training-page ── */
+﻿/* ── Text Training Page ── shares color tokens & layout with audio-training-page ── */
 
 .page {
     position: fixed;
@@ -13,16 +13,16 @@
 /* ── Header ── */
 .header {
     height: 50px;
-    background: #9966FF;
+    background: #004AAD;
     display: flex;
     align-items: center;
     padding: 0 16px;
     flex-shrink: 0;
     color: white;
     gap: 16px;
-    box-shadow: 0 2px 8px rgba(153,102,255,0.35);
+    box-shadow: 0 2px 8px rgba(0,74,173,0.35);
 }
-.headerLogo   { height: 1.6rem; vertical-align: middle; flex-shrink: 0; }
+.headerLogo   { height: 2.4rem; vertical-align: middle; flex-shrink: 0; }
 .headerTitle  { font-size: 17px; font-weight: 700; margin-right: 2px; white-space: nowrap; }
 .headerSpacer { flex: 1; }
 .headerNav    { display: flex; align-items: stretch; height: 50px; }
@@ -49,7 +49,7 @@
     position: absolute;
     top: 100%;
     left: 0;
-    background: #9966FF;
+    background: #004AAD;
     border-radius: 0 0 4px 4px;
     box-shadow: 0 6px 20px rgba(0,0,0,0.35);
     z-index: 1000;
@@ -89,26 +89,26 @@
 /* ── Sub-header ── */
 .subHeader {
     height: 46px;
-    background: #e8daf5;
+    background: #DAE8F5;
     display: flex;
     align-items: center;
     padding: 0 16px;
     gap: 10px;
     flex-shrink: 0;
-    border-bottom: 1px solid #d0b8f0;
+    border-bottom: 1px solid #B8D0F0;
 }
 .subHeaderType {
     font-size: 14px;
     font-weight: 700;
-    color: #5c1a8a;
+    color: #003087;
     white-space: nowrap;
 }
 .infoIcon { display: flex; align-items: center; cursor: default; flex-shrink: 0; }
-.divider  { width: 1px; height: 22px; background: #c4a8e8; flex-shrink: 0; }
+.divider  { width: 1px; height: 22px; background: #A8C4E8; flex-shrink: 0; }
 .spacer   { flex: 1; }
 
 .projectNamePill {
-    background: #9966FF;
+    background: #004AAD;
     color: white;
     border-radius: 14px;
     padding: 3px 14px;
@@ -118,10 +118,27 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+    cursor: pointer;
+    transition: background 0.15s;
+}
+.projectNamePill:hover { background: #003A8C; }
+
+.projectNameInput {
+    background: white;
+    color: #004AAD;
+    border: 2px solid #004AAD;
+    border-radius: 8px;
+    padding: 4px 10px;
+    font-size: 13px;
+    font-weight: 600;
+    outline: none;
+    min-width: 80px;
+    max-width: 220px;
+    font-family: inherit;
 }
 
 .csvUploadBtn {
-    background: #9966FF;
+    background: #004AAD;
     color: white;
     border: none;
     border-radius: 18px;
@@ -134,15 +151,15 @@
     white-space: nowrap;
     flex-shrink: 0;
 }
-.csvUploadBtn:hover { background: #7d4fd1; }
+.csvUploadBtn:hover { background: #003A8C; }
 
 .saveBtn {
     width: 32px;
     height: 32px;
     border-radius: 6px;
-    border: 1.5px solid #9966FF;
+    border: 1.5px solid #004AAD;
     background: white;
-    color: #9966FF;
+    color: #004AAD;
     font-size: 16px;
     cursor: pointer;
     display: flex;
@@ -151,13 +168,13 @@
     transition: background 0.15s;
     flex-shrink: 0;
 }
-.saveBtn:hover   { background: #f0e6ff; }
+.saveBtn:hover   { background: #E6F0FF; }
 .saveBtn:disabled { opacity: 0.5; cursor: default; }
 
 .downloadSampleBtn {
     background: white;
-    color: #9966FF;
-    border: 1.5px solid #9966FF;
+    color: #004AAD;
+    border: 1.5px solid #004AAD;
     border-radius: 18px;
     padding: 5px 14px;
     font-size: 13px;
@@ -168,12 +185,49 @@
     white-space: nowrap;
     flex-shrink: 0;
 }
-.downloadSampleBtn:hover { background: #f0e6ff; }
+.downloadSampleBtn:hover { background: #E6F0FF; }
+
+/* ── CSV upload error ── */
+.uploadError {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    color: #e53935;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: default;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+.uploadErrorTooltip {
+    display: none;
+    position: absolute;
+    top: calc(100% + 6px);
+    left: 0;
+    background: #fff3f3;
+    border: 1.5px solid #e53935;
+    border-radius: 8px;
+    padding: 10px 14px;
+    font-size: 12px;
+    font-weight: 400;
+    color: #b71c1c;
+    white-space: pre-line;
+    z-index: 200;
+    min-width: 260px;
+    box-shadow: 0 4px 14px rgba(229, 57, 53, 0.15);
+    line-height: 1.5;
+}
+
+.uploadError:hover .uploadErrorTooltip {
+    display: block;
+}
 
 /* ── Canvas (fixed workspace — only classes column scrolls) ── */
 .canvas {
     flex: 1;
-    background: #f0ecf8;
+    background: #EAF2FC;
     display: flex;
     flex-direction: row;
     align-items: stretch;
@@ -305,7 +359,7 @@
     right: 0;
     top: calc(100% + 2px);
     background: white;
-    border: 1px solid #e0d0f5;
+    border: 1px solid #D0E0F5;
     border-radius: 6px;
     box-shadow: 0 6px 18px rgba(0,0,0,0.15);
     z-index: 200;
@@ -325,7 +379,7 @@
     transition: background 0.12s;
     font-family: inherit;
 }
-.classCardMenu button:hover { background: #f5f0ff; }
+.classCardMenu button:hover { background: #F0F5FF; }
 .classCardMenu button.danger { color: #e53935; }
 .classCardMenu button.danger:hover { background: #fff0f0; }
 .menuDivider { height: 1px; background: #e8e0f0; margin: 3px 0; }
@@ -347,8 +401,8 @@
 .menuConfirmNo {
     flex: 1;
     padding: 5px 0;
-    background: #f0e6ff;
-    color: #5c1a8a;
+    background: #E6F0FF;
+    color: #003087;
     border: none;
     border-radius: 4px;
     font-size: 12px;
@@ -394,7 +448,7 @@
     display: inline-flex;
     align-items: center;
     gap: 4px;
-    background: #f0ecf8;
+    background: #EAF2FC;
     border: 1px solid #d8ccee;
     border-radius: 14px;
     padding: 4px 8px 4px 10px;
@@ -443,7 +497,7 @@
     justify-content: center;
     transition: background 0.1s, color 0.1s;
 }
-.chipDeleteBtn:hover { background: #e0d0f5; color: #5c1a8a; }
+.chipDeleteBtn:hover { background: #D0E0F5; color: #003087; }
 
 /* ── Text input row ── */
 .textInputRow {
@@ -463,14 +517,14 @@
     background: #fafafe;
     transition: border-color 0.15s;
 }
-.sampleInput:focus { border-color: #9966FF; background: white; }
+.sampleInput:focus { border-color: #004AAD; background: white; }
 .sampleInput::placeholder { color: #bbb; }
 
 .addSampleBtn {
     width: 32px;
     height: 32px;
     border-radius: 50%;
-    background: #9966FF;
+    background: #004AAD;
     color: white;
     border: none;
     font-size: 20px;
@@ -482,7 +536,7 @@
     transition: background 0.15s;
     line-height: 1;
 }
-.addSampleBtn:hover:not(:disabled)  { background: #7d4fd1; }
+.addSampleBtn:hover:not(:disabled)  { background: #003A8C; }
 .addSampleBtn:disabled { background: #d0c0f0; cursor: default; }
 
 .sampleCountLabel {
@@ -494,9 +548,9 @@
 /* ── Add class card ── */
 .addClassCard {
     background: white;
-    border: 2px dashed #c4a8e8;
+    border: 2px dashed #A8C4E8;
     border-radius: 10px;
-    color: #9966FF;
+    color: #004AAD;
     font-size: 14px;
     font-weight: 600;
     cursor: pointer;
@@ -506,7 +560,7 @@
     font-family: inherit;
     flex-shrink: 0;
 }
-.addClassCard:hover { border-color: #9966FF; background: #f5f0ff; }
+.addClassCard:hover { border-color: #004AAD; background: #F0F5FF; }
 
 /* ── Training card — centered within trainingColumn ── */
 .trainingCard {
@@ -517,7 +571,7 @@
     width: 220px;
 }
 .trainingHeader {
-    background: #9966FF;
+    background: #004AAD;
     color: white;
     font-size: 14px;
     font-weight: 700;
@@ -533,8 +587,8 @@
 
 .activeClassInfo {
     font-size: 11px;
-    color: #9966FF;
-    background: #f0e6ff;
+    color: #004AAD;
+    background: #E6F0FF;
     border-radius: 4px;
     padding: 4px 10px;
     text-align: center;
@@ -545,7 +599,7 @@
 .trainModelBtn {
     width: 100%;
     padding: 11px 0;
-    background: #9966FF;
+    background: #004AAD;
     color: white;
     border: none;
     border-radius: 8px;
@@ -558,17 +612,17 @@
     justify-content: center;
     gap: 6px;
     transition: background 0.15s;
-    box-shadow: 0 2px 6px rgba(153,102,255,0.3);
+    box-shadow: 0 2px 6px rgba(0,74,173,0.3);
 }
-.trainModelBtn:hover:not(:disabled) { background: #7d4fd1; }
-.trainModelBtn:disabled { background: #c4a8e8; cursor: default; box-shadow: none; }
+.trainModelBtn:hover:not(:disabled) { background: #003A8C; }
+.trainModelBtn:disabled { background: #A8C4E8; cursor: default; box-shadow: none; }
 
 .trainAgainBtn {
     width: 100%;
     padding: 10px 0;
     background: white;
-    color: #9966FF;
-    border: 2px solid #9966FF;
+    color: #004AAD;
+    border: 2px solid #004AAD;
     border-radius: 8px;
     font-size: 13px;
     font-weight: 700;
@@ -576,7 +630,7 @@
     font-family: inherit;
     transition: background 0.15s;
 }
-.trainAgainBtn:hover:not(:disabled) { background: #f0e6ff; }
+.trainAgainBtn:hover:not(:disabled) { background: #E6F0FF; }
 .trainAgainBtn:disabled { opacity: 0.5; cursor: default; }
 
 .trainStatusText {
@@ -597,13 +651,13 @@
 .progressTrack {
     width: 100%;
     height: 6px;
-    background: #e8daf5;
+    background: #DAE8F5;
     border-radius: 3px;
     overflow: hidden;
 }
 .progressFill {
     height: 100%;
-    background: #9966FF;
+    background: #004AAD;
     border-radius: 3px;
     transition: width 0.3s ease;
 }
@@ -611,12 +665,12 @@
 .chartWrap { width: 100%; }
 
 .trainingFooter {
-    border-top: 1px solid #f0e6ff;
+    border-top: 1px solid #E6F0FF;
     padding: 8px 14px;
     display: flex;
     justify-content: space-between;
     font-size: 12px;
-    color: #9966FF;
+    color: #004AAD;
     cursor: pointer;
     user-select: none;
 }
@@ -624,7 +678,7 @@
 
 .advancedSection {
     padding: 10px 14px 12px;
-    border-top: 1px solid #f0e6ff;
+    border-top: 1px solid #E6F0FF;
     display: flex;
     flex-direction: column;
     gap: 8px;
@@ -646,7 +700,7 @@
     font-family: inherit;
     outline: none;
 }
-.advancedInput:focus { border-color: #9966FF; }
+.advancedInput:focus { border-color: #004AAD; }
 
 .advancedBtnsRow {
     display: flex;
@@ -655,8 +709,8 @@
 .resetBtn {
     flex: 1;
     padding: 5px 0;
-    background: #f0e6ff;
-    color: #5c1a8a;
+    background: #E6F0FF;
+    color: #003087;
     border: none;
     border-radius: 5px;
     font-size: 11px;
@@ -674,7 +728,7 @@
     width: 260px;
 }
 .testingHeader {
-    background: #9966FF;
+    background: #004AAD;
     color: white;
     font-size: 14px;
     font-weight: 700;
@@ -685,7 +739,7 @@
 }
 .exportModelBtn {
     background: white;
-    color: #9966FF;
+    color: #004AAD;
     border: none;
     border-radius: 14px;
     padding: 4px 11px;
@@ -698,7 +752,7 @@
     gap: 4px;
     transition: background 0.12s;
 }
-.exportModelBtn:hover { background: #f0e6ff; }
+.exportModelBtn:hover { background: #E6F0FF; }
 
 .testingBody {
     padding: 12px;
@@ -717,9 +771,9 @@
 .testInputLabel {
     font-size: 12px;
     font-weight: 700;
-    color: #9966FF;
+    color: #004AAD;
     margin: 0;
-    background: #e8daf5;
+    background: #DAE8F5;
     padding: 4px 8px;
     border-radius: 4px;
 }
@@ -745,13 +799,13 @@
     transition: border-color 0.15s;
     resize: none;
 }
-.testTextInput:focus { border-color: #9966FF; background: white; }
+.testTextInput:focus { border-color: #004AAD; background: white; }
 .testTextInput::placeholder { color: #bbb; }
 
 .classifyBtn {
     width: 100%;
     padding: 8px 0;
-    background: #9966FF;
+    background: #004AAD;
     color: white;
     border: none;
     border-radius: 8px;
@@ -764,17 +818,17 @@
     align-items: center;
     justify-content: center;
 }
-.classifyBtn:hover:not(:disabled) { background: #7d4fd1; }
-.classifyBtn:disabled { background: #c4a8e8; cursor: default; }
+.classifyBtn:hover:not(:disabled) { background: #003A8C; }
+.classifyBtn:disabled { background: #A8C4E8; cursor: default; }
 
 .testOutputSection { display: flex; flex-direction: column; gap: 6px; margin-top: 2px; }
 
 .testOutputLabel {
     font-size: 12px;
     font-weight: 700;
-    color: #9966FF;
+    color: #004AAD;
     margin: 0;
-    background: #e8daf5;
+    background: #DAE8F5;
     padding: 4px 8px;
     border-radius: 4px;
 }
@@ -784,7 +838,7 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
-    border: 2px solid #9966FF;
+    border: 2px solid #004AAD;
     border-radius: 8px;
     padding: 6px 10px;
     background: #faf6ff;
@@ -809,7 +863,7 @@
 }
 .testResultTrack {
     height: 16px;
-    background: #f0ecf8;
+    background: #EAF2FC;
     border-radius: 4px;
     overflow: hidden;
 }
@@ -845,8 +899,8 @@
 .overlaySpinner {
     width: 52px;
     height: 52px;
-    border: 5px solid #e0ccff;
-    border-top-color: #9966ff;
+    border: 5px solid #CCE0FF;
+    border-top-color: #004AAD;
     border-radius: 50%;
     animation: overlaySpinAnim 0.8s linear infinite;
 }
@@ -858,13 +912,13 @@
 .overlayTitle {
     font-size: 18px;
     font-weight: 700;
-    color: #4d2e9a;
+    color: #003087;
     margin: 0;
 }
 
 .overlaySubtitle {
     font-size: 13px;
-    color: #7a5fb0;
+    color: #1A6AC0;
     margin: 0;
     max-width: 360px;
     text-align: center;
@@ -877,7 +931,7 @@
 
 .overlayRetryBtn {
     margin-top: 6px;
-    background: #9966ff;
+    background: #004AAD;
     color: white;
     border: none;
     border-radius: 20px;
@@ -887,4 +941,4 @@
     cursor: pointer;
     transition: background 0.15s;
 }
-.overlayRetryBtn:hover { background: #7a4fd0; }
+.overlayRetryBtn:hover { background: #003A8C; }

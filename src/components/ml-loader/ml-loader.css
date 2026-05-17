@@ -1,7 +1,7 @@
-.overlay {
+﻿.overlay {
     position: fixed;
     inset: 0;
-    background: #f0ecf8;
+    background: #EAF2FC;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -17,7 +17,7 @@
 .card {
     background: white;
     border-radius: 16px;
-    box-shadow: 0 8px 32px rgba(153, 102, 255, 0.18), 0 2px 8px rgba(0, 0, 0, 0.08);
+    box-shadow: 0 8px 32px rgba(0, 74, 173, 0.18), 0 2px 8px rgba(0, 0, 0, 0.08);
     padding: 40px 48px;
     display: flex;
     flex-direction: column;
@@ -37,7 +37,7 @@
     position: absolute;
     inset: 0;
     border-radius: 50%;
-    border: 4px solid #e8daf5;
+    border: 4px solid #DAE8F5;
 }
 
 .spinnerFill {
@@ -45,8 +45,8 @@
     inset: 0;
     border-radius: 50%;
     border: 4px solid transparent;
-    border-top-color: #9966FF;
-    border-right-color: #9966FF;
+    border-top-color: #004AAD;
+    border-right-color: #004AAD;
     animation: spin 0.75s cubic-bezier(0.4, 0, 0.2, 1) infinite;
 }
 
@@ -59,7 +59,7 @@
     margin: 0;
     font-size: 13px;
     font-weight: 700;
-    color: #9966FF;
+    color: #004AAD;
     font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
     letter-spacing: 0.2px;
     text-align: center;

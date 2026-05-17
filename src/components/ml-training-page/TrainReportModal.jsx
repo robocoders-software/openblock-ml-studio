@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+﻿import React, { useState, useMemo } from 'react';
 import styles from './TrainReportModal.css';
 
 /* ── Tiny line chart ── */
@@ -144,7 +144,7 @@ const ClasswiseAnalysis = ({ labels, classMetrics, samples }) => {
 
                     <div className={styles.analysisSection}>
                         <div className={styles.analysisSectionHeader} style={{background: '#e8d6f5'}}>
-                            <span style={{color: '#6633cc', fontWeight: 700}}>True Positive</span>
+                            <span style={{color: '#003A8C', fontWeight: 700}}>True Positive</span>
                             <span className={styles.analysisSectionSub}>
                                 Your model correctly predicted {selectedClass} on these images
                             </span>
@@ -163,7 +163,7 @@ const ClasswiseAnalysis = ({ labels, classMetrics, samples }) => {
 
                     <div className={styles.analysisSection}>
                         <div className={styles.analysisSectionHeader} style={{background: '#e8d6f5'}}>
-                            <span style={{color: '#6633cc', fontWeight: 700}}>False Negatives</span>
+                            <span style={{color: '#003A8C', fontWeight: 700}}>False Negatives</span>
                             <span className={styles.analysisSectionSub}>
                                 Your model failed to predict an accurate class for {selectedClass} on these images
                             </span>

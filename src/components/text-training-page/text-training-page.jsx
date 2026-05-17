@@ -1,4 +1,4 @@
-import React, {useState, useRef, useEffect, useLayoutEffect, useCallback} from 'react';
+﻿import React, {useState, useRef, useEffect, useLayoutEffect, useCallback} from 'react';
 import PropTypes from 'prop-types';
 import styles from './text-training-page.css';
 import openblockLogo from '../openblock-logo.svg';
@@ -13,7 +13,7 @@ import {
 } from '../../lib/ml-engine.js';
 import {saveTextProject, loadTextProject} from '../../lib/project-persistence.js';
 
-const CLASS_COLORS = ['#E05C3D', '#2EAA7E', '#9966FF', '#774DCB', '#F39C12', '#E91E63', '#1ABC9C', '#E67E22'];
+const CLASS_COLORS = ['#E05C3D', '#2EAA7E', '#004AAD', '#003A8C', '#F39C12', '#E91E63', '#1ABC9C', '#E67E22'];
 const generateId   = () => Math.random().toString(36).slice(2, 10);
 
 /* Sample CSV users can download as a starting point */
@@ -26,6 +26,46 @@ This is terrible and broken,Negative
 I hate this so much,Negative
 Awful experience would not recommend,Negative
 This does not work at all,Negative`;
+
+/* Validate that the CSV matches the expected text,label format */
+const validateDatasetCSV = rawText => {
+    const lines = rawText.split('\n').map(l => l.trim()).filter(Boolean);
+    if (lines.length === 0) return 'The file is empty.';
+
+    const firstLine = lines[0];
+    const hasHeader = firstLine.toLowerCase() === 'text,label';
+
+    /* If there is no header, the first line must still look like a data row */
+    if (!hasHeader && !firstLine.includes(',')) {
+        return 'Invalid format. The CSV must have two columns: text and label.\n' +
+               'Download the sample file to see the correct format.';
+    }
+
+    const rows = [];
+    for (const line of lines) {
+        const t = line.trim();
+        if (!t || t.toLowerCase() === 'text,label') continue;
+        const lastComma = t.lastIndexOf(',');
+        if (lastComma < 1) continue;
+        const text  = t.slice(0, lastComma).trim();
+        const label = t.slice(lastComma + 1).trim();
+        if (text && label) rows.push({text, label});
+    }
+
+    if (rows.length === 0) {
+        return 'No valid data rows found.\n' +
+               'Each row must be: your text, Label\n' +
+               'Download the sample file to see the correct format.';
+    }
+
+    const uniqueLabels = [...new Set(rows.map(r => r.label))];
+    if (uniqueLabels.length < 2) {
+        return `Only 1 class found ("${uniqueLabels[0]}"). ` +
+               'The dataset must contain at least 2 different classes.';
+    }
+
+    return null; // valid
+};
 
 /* Parse CSV: text,label  (header row optional) */
 const parseDatasetCSV = rawText => {
@@ -344,6 +384,9 @@ const TextTrainingPage = ({
     const [openMenuLabel, setOpenMenu]  = useState(null);
     const [fileMenuOpen,  setFileMenu]  = useState(false);
     const [saveStatus,    setSaveStatus] = useState('idle');
+    const [uploadError,   setUploadError] = useState('');
+    const [renamingProject, setRenamingProject] = useState(false);
+    const [renameValue,     setRenameValue]     = useState(project.name);
 
     const fileMenuRef      = useRef(null);
     const canvasRef        = useRef(null);
@@ -532,6 +575,23 @@ const TextTrainingPage = ({
         }
     };
 
+    /* ── Project rename ── */
+    const commitProjectRename = useCallback(() => {
+        const trimmed = renameValue.trim();
+        setRenamingProject(false);
+        if (!trimmed || trimmed === project.name) return;
+        onUpdateProject({...project, name: trimmed});
+        const ipc = (() => { try { return window.require('electron').ipcRenderer; } catch (_) { return null; } })();
+        if (ipc) {
+            ipc.invoke('ml-write-file', project.id, 'project.json', JSON.stringify({
+                id: project.id, name: trimmed, type: project.type,
+                labels: labels || [], trained: isTrained,
+                createdAt: project.createdAt, updatedAt: Date.now(),
+                savedAt: project.savedAt || Date.now()
+            })).catch(() => {});
+        }
+    }, [renameValue, project, labels, isTrained, onUpdateProject]);
+
     /* ── Save ── */
     const handleSave = useCallback(async () => {
         setSaveStatus('saving');
@@ -581,30 +641,49 @@ const TextTrainingPage = ({
     const handleCSVUpload = e => {
         const file = e.target.files[0];
         if (!file) return;
+        setUploadError('');
+
+        /* Validate extension */
+        if (!file.name.toLowerCase().endsWith('.csv')) {
+            setUploadError('Invalid file type. Please upload a .csv file.');
+            e.target.value = '';
+            return;
+        }
+
         const reader = new FileReader();
         reader.onload = evt => {
-            const rows = parseDatasetCSV(evt.target.result || '');
-            if (rows.length === 0) return;
+            const raw = evt.target.result || '';
 
-            /* Collect all unique labels from CSV first */
+            /* Validate format */
+            const validationMsg = validateDatasetCSV(raw);
+            if (validationMsg) {
+                setUploadError(validationMsg);
+                e.target.value = '';
+                return;
+            }
+
+            const rows = parseDatasetCSV(raw);
+
+            /* Build merged data using current state directly (closure) */
+            const mergedData = {...trainingData};
+            for (const {text, label} of rows) {
+                if (!mergedData[label]) mergedData[label] = [];
+                mergedData[label].push({id: generateId(), type: 'text', text});
+            }
+
+            /* Merge labels: existing + new from CSV */
             const csvLabels = [...new Set(rows.map(r => r.label).filter(Boolean))];
+            const mergedLabels = [...labels];
+            for (const lbl of csvLabels) {
+                if (!mergedLabels.includes(lbl)) mergedLabels.push(lbl);
+            }
 
-            setLabels(prev => {
-                const merged = [...prev];
-                for (const lbl of csvLabels) {
-                    if (!merged.includes(lbl)) merged.push(lbl);
-                }
-                return merged;
-            });
+            /* Remove classes that are empty after the upload (keep ≥ 2) */
+            const nonEmpty = mergedLabels.filter(l => (mergedData[l] || []).length > 0);
+            const finalLabels = nonEmpty.length >= 2 ? nonEmpty : mergedLabels;
 
-            setData(prev => {
-                const next = {...prev};
-                for (const {text, label} of rows) {
-                    if (!next[label]) next[label] = [];
-                    next[label].push({id: generateId(), type: 'text', text});
-                }
-                return next;
-            });
+            setLabels(finalLabels);
+            setData(mergedData);
             setTrained(false);
         };
         reader.readAsText(file);
@@ -655,7 +734,7 @@ const TextTrainingPage = ({
         const ty2 = testRect.top + testRect.height / 2 - wrapRect.top;
         const tcx = Math.max(40, (tx2 - tx1) / 2);
         paths.push({
-            color: '#9966FF',
+            color: '#004AAD',
             d: `M ${tx1} ${ty1} C ${tx1 + tcx} ${ty1} ${tx2 - tcx} ${ty2} ${tx2} ${ty2}`
         });
 
@@ -690,11 +769,9 @@ const TextTrainingPage = ({
                             <div className={styles.navDropdown}>
                                 <button onClick={() => { setFileMenu(false); (onNewProject || onBack)(); }}>New</button>
                                 <button onClick={() => { setFileMenu(false); (onNewMLProject || onBack)(); }}>New ML Project</button>
-                                <button onClick={() => { setFileMenu(false); (onOpenMLProject || onBack)(); }}>Open ML Project</button>
                             </div>
                         )}
                     </div>
-                    <button className={styles.navBtn}>Tutorials</button>
                     <button className={styles.navBtn}>Help</button>
                 </nav>
                 <div className={styles.headerSpacer}/>
@@ -706,18 +783,38 @@ const TextTrainingPage = ({
                 {/* Text Classifier label + info icon */}
                 <span className={styles.subHeaderType}>Text Classifier</span>
                 <span className={styles.infoIcon} title="Train a model to classify text — then use it in your Blocks project.">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="#9966FF" xmlns="http://www.w3.org/2000/svg">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="#004AAD" xmlns="http://www.w3.org/2000/svg">
                         <circle cx="12" cy="12" r="11"/>
                         <circle cx="12" cy="8" r="1.3" fill="white"/>
                         <rect x="10.7" y="11" width="2.6" height="6" rx="1.3" fill="white"/>
                     </svg>
                 </span>
                 <div className={styles.divider}/>
-                <span className={styles.projectNamePill}>{project.name}</span>
+                {renamingProject ? (
+                    <input
+                        className={styles.projectNameInput}
+                        autoFocus
+                        value={renameValue}
+                        onChange={e => setRenameValue(e.target.value)}
+                        onBlur={commitProjectRename}
+                        onKeyDown={e => {
+                            if (e.key === 'Enter') { e.preventDefault(); commitProjectRename(); }
+                            if (e.key === 'Escape') { setRenameValue(project.name); setRenamingProject(false); }
+                        }}
+                    />
+                ) : (
+                    <span
+                        className={styles.projectNamePill}
+                        title="Click to rename"
+                        onClick={() => { setRenameValue(project.name); setRenamingProject(true); }}
+                    >
+                        {project.name}
+                    </span>
+                )}
                 <div className={styles.divider}/>
 
                 {/* CSV upload */}
-                <button className={styles.csvUploadBtn} onClick={() => csvInputRef.current && csvInputRef.current.click()}>
+                <button className={styles.csvUploadBtn} onClick={() => { setUploadError(''); csvInputRef.current && csvInputRef.current.click(); }}>
                     Upload dataset from .csv
                 </button>
                 <input
@@ -727,6 +824,12 @@ const TextTrainingPage = ({
                     style={{display: 'none'}}
                     onChange={handleCSVUpload}
                 />
+                {uploadError && (
+                    <span className={styles.uploadError} title={uploadError}>
+                        &#9888; Invalid format
+                        <span className={styles.uploadErrorTooltip}>{uploadError}</span>
+                    </span>
+                )}
 
                 {/* Save icon */}
                 <button

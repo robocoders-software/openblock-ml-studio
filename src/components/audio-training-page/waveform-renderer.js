@@ -1,4 +1,4 @@
-/**
+﻿/**
  * WaveformRenderer — DAW-style scrolling PCM waveform on a canvas.
  *
  * Maintains a ring buffer of {min, max} per pixel column and renders
@@ -9,7 +9,7 @@ export class WaveformRenderer {
     constructor(canvas, options) {
         const o      = options || {};
         this.canvas  = canvas;
-        this.color   = o.color    || '#9966FF';
+        this.color   = o.color    || '#004AAD';
         this.bgColor = o.bgColor  || '#111';
         this.histMs  = o.historyMs || 4000;
         this._hist   = [];

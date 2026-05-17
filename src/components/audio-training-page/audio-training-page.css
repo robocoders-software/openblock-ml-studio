@@ -1,4 +1,4 @@
-/* ── Audio Training Page — shares color tokens with ml-training-page ── */
+﻿/* ── Audio Training Page — shares color tokens with ml-training-page ── */
 
 .page {
     position: fixed;
@@ -13,16 +13,16 @@
 /* ── Header ── */
 .header {
     height: 50px;
-    background: #9966FF;
+    background: #004AAD;
     display: flex;
     align-items: center;
     padding: 0 16px;
     flex-shrink: 0;
     color: white;
     gap: 16px;
-    box-shadow: 0 2px 8px rgba(153,102,255,0.35);
+    box-shadow: 0 2px 8px rgba(0,74,173,0.35);
 }
-.headerLogo   { height: 1.6rem; vertical-align: middle; flex-shrink: 0; }
+.headerLogo   { height: 2.4rem; vertical-align: middle; flex-shrink: 0; }
 .headerTitle  { font-size: 17px; font-weight: 700; margin-right: 2px; white-space: nowrap; }
 .headerSpacer { flex: 1; }
 .headerNav    { display: flex; align-items: stretch; height: 50px; }
@@ -49,7 +49,7 @@
     position: absolute;
     top: 100%;
     left: 0;
-    background: #9966FF;
+    background: #004AAD;
     border-radius: 0 0 4px 4px;
     box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
     z-index: 1000;
@@ -88,41 +88,58 @@
 /* ── Sub-header ── */
 .subHeader {
     height: 54px;
-    background: #F0E8FF;
+    background: #E8F2FF;
     display: flex;
     align-items: center;
     padding: 0 16px;
     gap: 12px;
     flex-shrink: 0;
-    border-bottom: 1px solid #C8A8F0;
+    border-bottom: 1px solid #A8C8F0;
 }
-.subHeaderType  { font-size: 15px; font-weight: 700; color: #9966FF; }
+.subHeaderType  { font-size: 15px; font-weight: 700; color: #004AAD; }
 .infoIcon {
     display: flex; align-items: center; justify-content: center;
     cursor: help; flex-shrink: 0;
     opacity: 0.9; transition: opacity 0.15s, transform 0.15s;
 }
 .infoIcon:hover { opacity: 1; transform: scale(1.1); }
-.divider   { width: 1px; height: 30px; background: #C8A8F0; }
+.divider   { width: 1px; height: 30px; background: #A8C8F0; }
 .projectNamePill {
-    background: #9966FF; color: white;
+    background: #004AAD; color: white;
     border-radius: 8px; padding: 5px 14px;
     font-size: 13px; font-weight: 600;
+    cursor: pointer;
+    transition: background 0.15s;
+}
+.projectNamePill:hover { background: #003A8C; }
+
+.projectNameInput {
+    background: white;
+    color: #004AAD;
+    border: 2px solid #004AAD;
+    border-radius: 8px;
+    padding: 4px 10px;
+    font-size: 13px;
+    font-weight: 600;
+    outline: none;
+    min-width: 80px;
+    max-width: 220px;
+    font-family: inherit;
 }
 .saveBtn {
     background: none; border: none; cursor: pointer;
-    color: #9966FF; font-size: 20px; padding: 4px 6px;
+    color: #004AAD; font-size: 20px; padding: 4px 6px;
     border-radius: 6px; transition: background 0.15s;
 }
-.saveBtn:hover { background: #E0CCFF; }
+.saveBtn:hover { background: #CCE0FF; }
 .spacer { flex: 1; }
 .webcamLabel { font-size: 12px; color: #555; font-weight: 600; white-space: nowrap; }
 .webcamSelect {
-    border: 1.5px solid #C8A8F0; border-radius: 8px;
+    border: 1.5px solid #A8C8F0; border-radius: 8px;
     padding: 5px 10px; font-size: 12px; color: #333;
     background: white; cursor: pointer; max-width: 260px;
 }
-.webcamSelect:focus { border-color: #9966FF; outline: none; }
+.webcamSelect:focus { border-color: #004AAD; outline: none; }
 
 /* ── Canvas (fixed — only classes column scrolls) ── */
 .canvas {
@@ -195,7 +212,7 @@
     flex-shrink: 0;
 }
 .classCard:hover {
-    box-shadow: 0 6px 24px rgba(153,102,255,0.16), 0 2px 6px rgba(0,0,0,0.08);
+    box-shadow: 0 6px 24px rgba(0,74,173,0.16), 0 2px 6px rgba(0,0,0,0.08);
 }
 .classCardDisabled { opacity: 0.45; }
 .classCardDisabled .classCardBody { pointer-events: none; }
@@ -232,8 +249,8 @@
 .classCardMenuBtn:hover { background: rgba(255,255,255,0.22); }
 .classCardMenu {
     position: absolute; right: 0; top: 100%;
-    background: #9966FF; border-radius: 8px;
-    box-shadow: 0 4px 14px rgba(153,102,255,0.35);
+    background: #004AAD; border-radius: 8px;
+    box-shadow: 0 4px 14px rgba(0,74,173,0.35);
     z-index: 20; min-width: 160px; overflow: hidden;
 }
 .classCardMenu button {
@@ -305,13 +322,13 @@
 }
 
 .activeClassInfo {
-    background: #F0E8FF;
-    color: #7040C0;
+    background: #E8F2FF;
+    color: #003A8C;
     font-size: 11px;
     font-weight: 700;
     text-align: center;
     padding: 5px 14px;
-    border-bottom: 1px solid #E0CCFF;
+    border-bottom: 1px solid #CCE0FF;
 }
 
 .nameEditInput {
@@ -333,7 +350,7 @@
 /* ── Left panel: idle mode ── */
 .classCardLeft {
     flex: 3; padding: 14px 16px;
-    border-right: 1px solid #F0E8FF;
+    border-right: 1px solid #E8F2FF;
     display: flex; flex-direction: column;
     gap: 10px; align-items: center; justify-content: center;
 }
@@ -347,12 +364,12 @@
 .micIdleBtn {
     display: flex; flex-direction: column;
     align-items: center; gap: 6px;
-    border: 1.5px dashed #C8A8F0; border-radius: 8px;
+    border: 1.5px dashed #A8C8F0; border-radius: 8px;
     padding: 14px 22px; cursor: pointer;
     background: #fafafa; font-size: 12px; color: #666;
     min-width: 90px; transition: border-color 0.2s, background 0.2s, color 0.2s;
 }
-.micIdleBtn:hover { border-color: #9966FF; background: #F0E8FF; color: #9966FF; }
+.micIdleBtn:hover { border-color: #004AAD; background: #E8F2FF; color: #004AAD; }
 
 /* ── Left panel: mic recording mode ── */
 .micRecordView {
@@ -365,12 +382,12 @@
 }
 .micLabel { font-size: 12px; font-weight: 700; color: #555; }
 .camBackBtn {
-    background: none; border: none; color: #9966FF;
+    background: none; border: none; color: #004AAD;
     font-size: 16px; cursor: pointer; padding: 2px 6px;
     border-radius: 4px; line-height: 1;
     transition: background 0.15s;
 }
-.camBackBtn:hover { background: #F0E8FF; }
+.camBackBtn:hover { background: #E8F2FF; }
 
 .liveWaveform {
     width: 100%; height: 130px;
@@ -425,15 +442,15 @@
 }
 
 .holdBtn {
-    width: 100%; background: #9966FF; color: white;
+    width: 100%; background: #004AAD; color: white;
     border: none; border-radius: 20px;
     padding: 10px; font-size: 13px; font-weight: 700;
     cursor: pointer; user-select: none; -webkit-user-select: none;
     transition: background 0.15s;
 }
-.holdBtn:hover:not(:disabled)  { background: #7040C0; }
+.holdBtn:hover:not(:disabled)  { background: #003A8C; }
 .holdBtn:active:not(:disabled) { background: #5C2FA0; }
-.holdBtn:disabled { background: #C8A8F0; cursor: not-allowed; }
+.holdBtn:disabled { background: #A8C8F0; cursor: not-allowed; }
 .holdBtnRecording {
     background: #e53935 !important;
     animation: pulse 0.8s ease-in-out infinite;
@@ -458,29 +475,29 @@
 .resourceErrorTitle { font-size: 13px; font-weight: 700; color: #333; margin: 0; }
 .resourceErrorMsg { font-size: 11px; color: #777; margin: 0; line-height: 1.4; }
 .resourceRetryBtn {
-    background: none; border: 1.5px solid #9966FF; color: #9966FF;
+    background: none; border: 1.5px solid #004AAD; color: #004AAD;
     border-radius: 16px; padding: 5px 14px; font-size: 11px; font-weight: 700;
     cursor: pointer; transition: background 0.15s; margin-top: 2px;
 }
-.resourceRetryBtn:hover { background: #F0E8FF; }
+.resourceRetryBtn:hover { background: #E8F2FF; }
 
 /* ── Settings panel ── */
 .settingsPanel { display: flex; flex-direction: column; width: 100%; }
 .settingsPanelHeader {
     display: flex; align-items: center; justify-content: space-between;
-    background: #E0CCFF; padding: 7px 12px;
-    font-size: 13px; font-weight: 700; color: #6633cc;
+    background: #CCE0FF; padding: 7px 12px;
+    font-size: 13px; font-weight: 700; color: #003A8C;
     border-radius: 6px 6px 0 0; margin-bottom: 2px;
 }
 .settingsForm { display: flex; flex-direction: column; gap: 12px; padding: 14px 12px; }
 .settingsRow { display: flex; align-items: center; gap: 10px; }
 .settingsLabel { font-size: 12px; font-weight: 600; color: #444; min-width: 100px; }
 .settingsInput {
-    width: 60px; border: 1.5px solid #C8A8F0; border-radius: 6px;
+    width: 60px; border: 1.5px solid #A8C8F0; border-radius: 6px;
     padding: 4px 8px; font-size: 13px; color: #333; outline: none;
     transition: border-color 0.2s;
 }
-.settingsInput:focus { border-color: #9966FF; }
+.settingsInput:focus { border-color: #004AAD; }
 .settingsUnit { font-size: 12px; color: #777; }
 .toggleSwitch {
     width: 42px; height: 22px; border-radius: 11px;
@@ -488,7 +505,7 @@
     position: relative; transition: background 0.2s;
     padding: 0; flex-shrink: 0;
 }
-.toggleOn { background: #9966FF; }
+.toggleOn { background: #004AAD; }
 .toggleThumb {
     position: absolute; top: 3px; left: 3px;
     width: 16px; height: 16px; border-radius: 50%;
@@ -497,12 +514,12 @@
 }
 .toggleOn .toggleThumb { left: 23px; }
 .saveSettingsBtn {
-    background: #9966FF; color: white; border: none;
+    background: #004AAD; color: white; border: none;
     border-radius: 20px; padding: 9px 16px;
     font-size: 13px; font-weight: 700; cursor: pointer;
     align-self: flex-end; transition: background 0.2s;
 }
-.saveSettingsBtn:hover { background: #7040C0; }
+.saveSettingsBtn:hover { background: #003A8C; }
 
 /* ── Right panel: sample thumbnails ── */
 .classCardRight {
@@ -575,17 +592,17 @@
     padding: 0; z-index: 3;
     transition: background 0.15s;
 }
-.thumbExportBtn:hover { background: rgba(153,102,255,0.85); }
+.thumbExportBtn:hover { background: rgba(0,74,173,0.85); }
 .thumb:hover .thumbExportBtn { display: flex; }
 
 /* ── Add Class button ── */
 .addClassCard {
-    border: 2px dashed #C8A8F0;
+    border: 2px dashed #A8C8F0;
     border-radius: 12px;
     padding: 18px;
     text-align: center;
     cursor: pointer;
-    color: #9966FF;
+    color: #004AAD;
     font-size: 15px;
     font-weight: 700;
     background: rgba(255,255,255,0.7);
@@ -594,9 +611,9 @@
     transition: background 0.2s, border-color 0.2s, box-shadow 0.2s;
 }
 .addClassCard:hover {
-    background: rgba(153,102,255,0.07);
-    border-color: #9966FF;
-    box-shadow: 0 2px 12px rgba(153,102,255,0.15);
+    background: rgba(0,74,173,0.07);
+    border-color: #004AAD;
+    box-shadow: 0 2px 12px rgba(0,74,173,0.15);
 }
 
 /* ── Training card ── */
@@ -604,13 +621,13 @@
     background: white;
     border-radius: 12px;
     overflow: hidden;
-    box-shadow: 0 4px 20px rgba(153,102,255,0.18), 0 1px 4px rgba(0,0,0,0.08);
+    box-shadow: 0 4px 20px rgba(0,74,173,0.18), 0 1px 4px rgba(0,0,0,0.08);
     width: 280px;
     position: relative;
     z-index: 2;
 }
 .trainingHeader {
-    background: linear-gradient(135deg, #9966FF 0%, #7744dd 100%);
+    background: linear-gradient(135deg, #004AAD 0%, #0055BB 100%);
     color: white;
     padding: 12px 16px; font-size: 15px; font-weight: 700; letter-spacing: 0.3px;
     display: flex; align-items: center; justify-content: space-between;
@@ -618,37 +635,37 @@
 .trainingBody { padding: 18px 16px; display: flex; flex-direction: column; gap: 14px; }
 
 .trainModelBtn {
-    background: linear-gradient(135deg, #9966FF 0%, #7744dd 100%);
+    background: linear-gradient(135deg, #004AAD 0%, #0055BB 100%);
     color: white; border: none;
     border-radius: 24px; padding: 13px 16px;
     font-size: 14px; font-weight: 700; cursor: pointer; width: 100%;
     transition: opacity 0.2s, transform 0.15s, box-shadow 0.2s;
-    box-shadow: 0 4px 14px rgba(153,102,255,0.45);
+    box-shadow: 0 4px 14px rgba(0,74,173,0.45);
     letter-spacing: 0.3px;
 }
 .trainModelBtn:hover:not(:disabled) {
     opacity: 0.9; transform: translateY(-1px);
-    box-shadow: 0 6px 18px rgba(153,102,255,0.55);
+    box-shadow: 0 6px 18px rgba(0,74,173,0.55);
 }
 .trainModelBtn:active:not(:disabled) { transform: translateY(0); }
-.trainModelBtn:disabled { background: #C8A8F0; cursor: not-allowed; box-shadow: none; }
+.trainModelBtn:disabled { background: #A8C8F0; cursor: not-allowed; box-shadow: none; }
 
 .trainAgainBtn {
-    background: linear-gradient(135deg, #9966FF 0%, #7744dd 100%);
+    background: linear-gradient(135deg, #004AAD 0%, #0055BB 100%);
     color: white; border: none;
     border-radius: 24px; padding: 11px 16px;
     font-size: 13px; font-weight: 700;
     cursor: pointer; width: 100%;
     transition: opacity 0.2s, box-shadow 0.2s;
-    box-shadow: 0 3px 10px rgba(153,102,255,0.4);
+    box-shadow: 0 3px 10px rgba(0,74,173,0.4);
 }
-.trainAgainBtn:hover:not(:disabled) { opacity: 0.9; box-shadow: 0 5px 14px rgba(153,102,255,0.5); }
-.trainAgainBtn:disabled { background: #C8A8F0; cursor: not-allowed; box-shadow: none; }
+.trainAgainBtn:hover:not(:disabled) { opacity: 0.9; box-shadow: 0 5px 14px rgba(0,74,173,0.5); }
+.trainAgainBtn:disabled { background: #A8C8F0; cursor: not-allowed; box-shadow: none; }
 
-.progressTrack { height: 6px; background: #F0E8FF; border-radius: 3px; overflow: hidden; }
+.progressTrack { height: 6px; background: #E8F2FF; border-radius: 3px; overflow: hidden; }
 .progressFill {
     height: 100%;
-    background: linear-gradient(90deg, #9966FF, #774DCB);
+    background: linear-gradient(90deg, #004AAD, #003A8C);
     border-radius: 3px; transition: width 0.3s;
 }
 
@@ -665,20 +682,20 @@
 .useInBlocksBtn:disabled { background: #ddd; color: #999; cursor: not-allowed; }
 
 .chartWrap {
-    background: #F8F4FF; border: 1px solid #E0CCFF;
+    background: #F8F4FF; border: 1px solid #CCE0FF;
     border-radius: 8px; padding: 8px 4px 4px; overflow: hidden;
 }
 
 .trainingFooter {
-    border-top: 1px solid #F0E8FF; padding: 10px 14px;
+    border-top: 1px solid #E8F2FF; padding: 10px 14px;
     display: flex; align-items: center; justify-content: space-between;
-    cursor: pointer; color: #9966FF;
+    cursor: pointer; color: #004AAD;
     font-size: 13px; font-weight: 600; transition: background 0.15s;
 }
 .trainingFooter:hover { background: #F8F4FF; }
 
 .advancedSection {
-    border-top: 1px solid #F0E8FF; padding: 12px 14px;
+    border-top: 1px solid #E8F2FF; padding: 12px 14px;
     display: flex; flex-direction: column; gap: 8px;
 }
 .advancedRow {
@@ -687,18 +704,18 @@
 }
 .advancedInput {
     width: 60px; padding: 3px 6px;
-    border: 1px solid #C8A8F0; border-radius: 6px;
+    border: 1px solid #A8C8F0; border-radius: 6px;
     font-size: 12px; text-align: center;
 }
-.advancedInput:focus { border-color: #9966FF; outline: none; }
+.advancedInput:focus { border-color: #004AAD; outline: none; }
 .advancedBtnsRow { display: flex; gap: 8px; margin-top: 4px; }
 .trainReportBtn {
-    flex: 1; background: #F0E8FF; color: #9966FF;
+    flex: 1; background: #E8F2FF; color: #004AAD;
     border: none; border-radius: 8px; padding: 7px 8px;
     font-size: 11px; font-weight: 700; cursor: pointer;
     transition: background 0.15s;
 }
-.trainReportBtn:hover { background: #E0CCFF; }
+.trainReportBtn:hover { background: #CCE0FF; }
 .resetBtn {
     flex: 1; background: #fff0f0; color: #c0392b;
     border: none; border-radius: 8px; padding: 7px 8px;
@@ -712,13 +729,13 @@
     background: white;
     border-radius: 12px;
     overflow: hidden;
-    box-shadow: 0 4px 20px rgba(153,102,255,0.18), 0 1px 4px rgba(0,0,0,0.08);
+    box-shadow: 0 4px 20px rgba(0,74,173,0.18), 0 1px 4px rgba(0,0,0,0.08);
     width: 260px;
     position: relative;
     z-index: 2;
 }
 .testingHeader {
-    background: linear-gradient(135deg, #9966FF 0%, #7744dd 100%);
+    background: linear-gradient(135deg, #004AAD 0%, #0055BB 100%);
     color: white;
     padding: 12px 16px; font-size: 15px; font-weight: 700; letter-spacing: 0.3px;
     display: flex; align-items: center; justify-content: space-between; gap: 8px;
@@ -742,12 +759,12 @@
 
 .testOptionBtn {
     display: flex; flex-direction: column; align-items: center; gap: 4px;
-    border: 1.5px solid #C8A8F0; border-radius: 8px;
+    border: 1.5px solid #A8C8F0; border-radius: 8px;
     padding: 10px 14px; cursor: pointer;
     background: #fafafa; font-size: 11px; font-weight: 600; color: #555;
     min-width: 80px; transition: border-color 0.15s, background 0.15s, color 0.15s;
 }
-.testOptionBtn:hover       { border-color: #9966FF; background: #F0E8FF; color: #9966FF; }
+.testOptionBtn:hover       { border-color: #004AAD; background: #E8F2FF; color: #004AAD; }
 .testOptionBtnActive       { border-color: #e53935; background: #fff5f5; color: #e53935; }
 .testOptionBtnActive:hover { border-color: #e53935; background: #fff0f0; color: #e53935; }
 
@@ -767,7 +784,7 @@
 
 .testResultBar      { margin-bottom: 4px; }
 .testResultLabelRow { display: flex; justify-content: space-between; font-size: 11px; color: #444; margin-bottom: 3px; font-weight: 600; }
-.testResultTrack    { height: 8px; background: #F0E8FF; border-radius: 4px; overflow: hidden; }
+.testResultTrack    { height: 8px; background: #E8F2FF; border-radius: 4px; overflow: hidden; }
 
 /* ── Engine init / error overlay ── */
 .engineOverlay {
@@ -785,8 +802,8 @@
 .overlaySpinner {
     width: 52px;
     height: 52px;
-    border: 5px solid #e0ccff;
-    border-top-color: #9966ff;
+    border: 5px solid #CCE0FF;
+    border-top-color: #004AAD;
     border-radius: 50%;
     animation: overlaySpinAnim 0.8s linear infinite;
 }
@@ -798,13 +815,13 @@
 .overlayTitle {
     font-size: 18px;
     font-weight: 700;
-    color: #4d2e9a;
+    color: #003087;
     margin: 0;
 }
 
 .overlaySubtitle {
     font-size: 13px;
-    color: #7a5fb0;
+    color: #1A6AC0;
     margin: 0;
     max-width: 360px;
     text-align: center;
@@ -817,7 +834,7 @@
 
 .overlayRetryBtn {
     margin-top: 6px;
-    background: #9966ff;
+    background: #004AAD;
     color: white;
     border: none;
     border-radius: 20px;
@@ -827,5 +844,5 @@
     cursor: pointer;
     transition: background 0.15s;
 }
-.overlayRetryBtn:hover { background: #7a4fd0; }
+.overlayRetryBtn:hover { background: #003A8C; }
 .testResultFill     { height: 100%; border-radius: 4px; transition: width 0.25s; }

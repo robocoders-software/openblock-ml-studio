@@ -1,9 +1,9 @@
-/* ── Create Project Modal ─────────────────────────────────────────
-   primary:      #9966FF
-   primary-dark: #7040C0  (hover)
-   secondary:    #774DCB
-   bg-light:     #F0E8FF
-   border:       #C8A8F0
+﻿/* ── Create Project Modal ─────────────────────────────────────────
+   primary:      #004AAD
+   primary-dark: #003A8C  (hover)
+   secondary:    #003A8C
+   bg-light:     #E8F2FF
+   border:       #A8C8F0
 ──────────────────────────────────────────────────────────────── */
 
 .overlay {
@@ -23,7 +23,7 @@
     padding: 36px 40px 32px;
     width: 520px;
     max-width: 94vw;
-    box-shadow: 0 20px 60px rgba(153, 102, 255, 0.25);
+    box-shadow: 0 20px 60px rgba(0, 74, 173, 0.25);
 }
 
 .modalTitle {
@@ -56,11 +56,47 @@
     font-size: 15px;
     outline: none;
     transition: border-color 0.2s, box-shadow 0.2s;
-    margin-bottom: 22px;
+    margin-bottom: 6px;
 }
 .nameInput:focus {
-    border-color: #9966FF;
-    box-shadow: 0 0 0 3px rgba(153, 102, 255, 0.12);
+    border-color: #004AAD;
+    box-shadow: 0 0 0 3px rgba(0, 74, 173, 0.12);
+}
+.nameInputError {
+    border-color: #e53935 !important;
+    box-shadow: 0 0 0 3px rgba(229, 57, 53, 0.12) !important;
+}
+
+.errorMsg {
+    color: #e53935;
+    font-size: 12px;
+    margin: 0 0 14px;
+}
+
+.optionalTag {
+    font-weight: 400;
+    color: #aaa;
+    font-size: 12px;
+    margin-left: 4px;
+}
+
+.descInput {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 10px 14px;
+    border: 1.5px solid #ddd;
+    border-radius: 10px;
+    font-size: 14px;
+    outline: none;
+    resize: none;
+    font-family: inherit;
+    color: #333;
+    transition: border-color 0.2s, box-shadow 0.2s;
+    margin-bottom: 22px;
+}
+.descInput:focus {
+    border-color: #004AAD;
+    box-shadow: 0 0 0 3px rgba(0, 74, 173, 0.12);
 }
 
 .typeGrid {
@@ -79,19 +115,44 @@
     text-align: center;
 }
 .typeCard:hover {
-    border-color: #9966FF;
+    border-color: #004AAD;
     background: #F8F4FF;
-    box-shadow: 0 4px 12px rgba(153, 102, 255, 0.15);
+    box-shadow: 0 4px 12px rgba(0, 74, 173, 0.15);
 }
 .typeCardSelected {
-    border-color: #9966FF;
-    background: #F0E8FF;
-    box-shadow: 0 4px 12px rgba(153, 102, 255, 0.2);
+    border-color: #004AAD;
+    background: #E8F2FF;
+    box-shadow: 0 4px 12px rgba(0, 74, 173, 0.2);
 }
 
 .typeCardIcon  { font-size: 30px; margin-bottom: 8px; }
 .typeCardTitle { font-size: 14px; font-weight: 700; color: #222; margin: 0 0 4px; }
 .typeCardDesc  { font-size: 11.5px; color: #777; margin: 0; line-height: 1.4; }
+
+.typeCardDisabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+    position: relative;
+}
+.typeCardDisabled:hover {
+    border-color: #e8e8e8;
+    background: white;
+    box-shadow: none;
+}
+
+.comingSoonBadge {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    background: #f0f0f0;
+    color: #999;
+    font-size: 9px;
+    font-weight: 700;
+    padding: 2px 7px;
+    border-radius: 20px;
+    letter-spacing: 0.3px;
+    text-transform: uppercase;
+}
 
 .footer {
     display: flex;
@@ -113,7 +174,7 @@
 .cancelBtn:hover { background: #eee; }
 
 .createBtn {
-    background: #9966FF;
+    background: #004AAD;
     border: none;
     border-radius: 10px;
     padding: 11px 26px;
@@ -124,11 +185,11 @@
     transition: background 0.15s, transform 0.15s;
 }
 .createBtn:hover:not(:disabled) {
-    background: #7040C0;
+    background: #003A8C;
     transform: translateY(-1px);
 }
 .createBtn:disabled {
-    background: #C8A8F0;
+    background: #A8C8F0;
     cursor: not-allowed;
     transform: none;
 }
