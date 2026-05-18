@@ -1,6 +1,7 @@
 ﻿import React, {useState, useRef, useEffect, useLayoutEffect, useCallback} from 'react';
 import PropTypes from 'prop-types';
 import styles from './ml-training-page.css';
+import showAppDialog from '../../lib/app-dialog-service.js';
 import AudioTrainingPage from '../audio-training-page/audio-training-page.jsx';
 import TextTrainingPage  from '../text-training-page/text-training-page.jsx';
 import openblockLogo from '../openblock-logo.svg';
@@ -578,7 +579,13 @@ const TestingPanel = ({isTrained, classifierRef, mobileNetRef, labels, selectedD
         const file = e.target.files[0];
         if (!file) return;
         if (!classifierRef.current || !mobileNetRef.current) {
-            alert('Train a model first before testing.');
+            showAppDialog({
+                type: 'warning',
+                title: 'Model Not Trained',
+                message: 'Train a model first before testing.',
+                buttons: ['OK'],
+                defaultId: 0
+            });
             return;
         }
         const dataUrl = await new Promise(res => {

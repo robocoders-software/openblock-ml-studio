@@ -1,6 +1,7 @@
 ﻿import React, {useState, useRef, useEffect, useLayoutEffect, useCallback} from 'react';
 import PropTypes from 'prop-types';
 import styles from './audio-training-page.css';
+import showAppDialog from '../../lib/app-dialog-service.js';
 import openblockLogo from '../openblock-logo.svg';
 import MLLoader from '../ml-loader/ml-loader.jsx';
 import Spinner from 'openblock-gui/src/components/spinner/spinner.jsx';
@@ -1295,7 +1296,14 @@ const AudioTrainingPage = ({project, onBack, onUseInBlocks, onUpdateProject, onN
                                 <div className={styles.advancedBtnsRow}>
                                     <button className={styles.trainReportBtn} onClick={() => {
                                         const totalSamples = labels.reduce((s, l) => s + (trainingData[l] || []).length, 0);
-                                        alert(`Model: Audio Classifier\nClasses: ${labels.join(', ')}\nTotal Samples: ${totalSamples}\nEpochs: ${epochs}  Batch Size: ${batchSize}\nStatus: ${isTrained ? 'Trained ✓' : 'Not trained'}`);
+                                        showAppDialog({
+                                            type: 'info',
+                                            title: 'Training Report',
+                                            message: 'Audio Classifier',
+                                            detail: `Classes: ${labels.join(', ')}\nTotal Samples: ${totalSamples}\nEpochs: ${epochs}   Batch Size: ${batchSize}\nStatus: ${isTrained ? 'Trained ✓' : 'Not trained'}`,
+                                            buttons: ['OK'],
+                                            defaultId: 0
+                                        });
                                     }}>Train Report</button>
                                     <button className={styles.resetBtn}
                                         onClick={() => { setEpochs(25); setBatch(16); }}>Reset</button>
