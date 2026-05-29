@@ -339,8 +339,23 @@
     padding: 2px 8px; flex: 1; outline: none;
 }
 
+.bgNoiseBanner {
+    background: #f3f4f6;
+    border-bottom: 1px solid #e5e7eb;
+    color: #6b7280;
+    font-size: 11.5px;
+    line-height: 1.5;
+    padding: 7px 14px;
+    width: 100%;
+    box-sizing: border-box;
+}
+.classCardBodyInner {
+    display: flex;
+    flex: 1;
+}
+
 .classCardBody {
-    display: flex; min-height: 180px;
+    display: flex; flex-direction: column; min-height: 180px;
     border-radius: 0 0 12px 12px;
 }
 .classCardBodyCam {
@@ -671,6 +686,7 @@
 
 .trainStatusText    { font-size: 11px; color: #666; text-align: center; }
 .trainCompletedText { font-size: 12px; font-weight: 700; color: #27ae60; text-align: center; }
+.trainHintText      { font-size: 11px; color: #E05C3D; text-align: center; margin: 4px 0; }
 
 .useInBlocksBtn {
     background: #FF8C1A; border: none; color: white;

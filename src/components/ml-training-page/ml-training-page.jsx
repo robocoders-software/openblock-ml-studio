@@ -64,6 +64,20 @@ const AccuracyChart = ({points}) => {
 };
 AccuracyChart.propTypes = {points: PropTypes.array};
 
+/* Shared camera error formatter used by ClassCard and TestingPanel */
+const friendlyCamError = e => {
+    const n = e.name || '';
+    if (n === 'NotAllowedError' || n === 'PermissionDeniedError')
+        return {title: 'Permission Denied', msg: 'Camera access was denied. Click \'Try Again\' to be prompted to allow access.'};
+    if (n === 'NotFoundError' || n === 'DevicesNotFoundError')
+        return {title: 'No Camera Found', msg: 'No camera device was detected. Connect a webcam and try again.'};
+    if (n === 'NotReadableError' || n === 'TrackStartError')
+        return {title: 'Camera Busy', msg: 'Your camera might be open in another application. Close it and try again.'};
+    if (n === 'OverconstrainedError')
+        return {title: 'Camera Unavailable', msg: 'The selected camera does not support the required settings.'};
+    return {title: 'Camera Error', msg: e.message || 'Could not start the camera. Please try again.'};
+};
+
 /* ──────────────────────────────────────────────
    Class card with inline webcam
 ────────────────────────────────────────────── */
@@ -151,19 +165,6 @@ const ClassCard = React.forwardRef(({
             videoRef.current.srcObject = streamRef.current;
         }
     }, [showWebcam, showSettings]);
-
-    const friendlyCamError = e => {
-        const n = e.name || '';
-        if (n === 'NotAllowedError' || n === 'PermissionDeniedError')
-            return {title: 'Permission Denied', msg: 'Camera access was blocked. Allow camera permission in your browser or system settings.'};
-        if (n === 'NotFoundError' || n === 'DevicesNotFoundError')
-            return {title: 'No Camera Found', msg: 'No camera device was detected. Connect a webcam and try again.'};
-        if (n === 'NotReadableError' || n === 'TrackStartError')
-            return {title: 'Camera Busy', msg: 'Your camera might be open in another application. Close it and try again.'};
-        if (n === 'OverconstrainedError')
-            return {title: 'Camera Unavailable', msg: 'The selected camera does not support the required settings.'};
-        return {title: 'Camera Error', msg: e.message || 'Could not start the camera. Please try again.'};
-    };
 
     const startWebcam = async () => {
         onRequestWebcam();
@@ -569,14 +570,15 @@ const TestingPanel = ({isTrained, classifierRef, mobileNetRef, labels, selectedD
                 }
             }, 400);
         } catch (e) {
-            setCamError(e.message || 'Could not access camera');
-            console.error('[TestPanel] getUserMedia error:', e);
+            const {title, msg} = friendlyCamError(e);
+            setCamError(`${title}|||${msg}`);
         }
     }, [selectedDeviceId, classifierRef, mobileNetRef, labels]);
 
     /* ── Upload single image and classify ── */
     const handleUpload = useCallback(async e => {
-        const file = e.target.files[0];
+        const input = e.target;   // capture DOM ref before any await (React 16 event pooling)
+        const file = input.files[0];
         if (!file) return;
         if (!classifierRef.current || !mobileNetRef.current) {
             showAppDialog({
@@ -610,7 +612,7 @@ const TestingPanel = ({isTrained, classifierRef, mobileNetRef, labels, selectedD
         } catch (err) {
             console.error('[TestPanel] upload classify error:', err);
         }
-        e.target.value = '';
+        if (input) input.value = '';
     }, [classifierRef, mobileNetRef, labels]);
 
     /* ── Cleanup on unmount ── */
@@ -635,25 +637,39 @@ const TestingPanel = ({isTrained, classifierRef, mobileNetRef, labels, selectedD
                     <img src={testImg} alt="test" style={{width: '100%', borderRadius: 8, display: 'block'}}/>
                 </div>
             )}
-            {mode === 'idle' && <p className={styles.testByLabel}>Test Image By</p>}
-            <div className={styles.testOptionRow}>
-                <label className={styles.testOptionBtn}>
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" width="26" height="26">
-                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-                        <polyline points="17 8 12 3 7 8"/>
-                        <line x1="12" y1="3" x2="12" y2="15"/>
-                    </svg>
-                    Upload
-                    <input type="file" accept="image/*" style={{display: 'none'}} onChange={handleUpload}/>
-                </label>
-                <button className={styles.testOptionBtn} onClick={mode === 'webcam' ? stopCam : startWebcam}>
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" width="26" height="26">
-                        <path d="M23 7l-7 5 7 5V7z"/>
-                        <rect x="1" y="5" width="15" height="14" rx="2"/>
-                    </svg>
-                    {mode === 'webcam' ? 'Stop' : 'Webcam'}
-                </button>
-            </div>
+            {camError ? (() => {
+                const [title, msg] = camError.split('|||');
+                return (
+                    <div className={styles.resourceError}>
+                        <div className={styles.resourceErrorIcon}>!</div>
+                        <p className={styles.resourceErrorTitle}>{title}</p>
+                        <p className={styles.resourceErrorMsg}>{msg}</p>
+                        <button className={styles.resourceRetryBtn} onClick={startWebcam}>Try Again</button>
+                    </div>
+                );
+            })() : (
+                <>
+                    {mode === 'idle' && <p className={styles.testByLabel}>Test Image By</p>}
+                    <div className={styles.testOptionRow}>
+                        <label className={styles.testOptionBtn}>
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" width="26" height="26">
+                                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                                <polyline points="17 8 12 3 7 8"/>
+                                <line x1="12" y1="3" x2="12" y2="15"/>
+                            </svg>
+                            Upload
+                            <input type="file" accept="image/*" style={{display: 'none'}} onChange={handleUpload}/>
+                        </label>
+                        <button className={styles.testOptionBtn} onClick={mode === 'webcam' ? stopCam : startWebcam}>
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" width="26" height="26">
+                                <path d="M23 7l-7 5 7 5V7z"/>
+                                <rect x="1" y="5" width="15" height="14" rx="2"/>
+                            </svg>
+                            {mode === 'webcam' ? 'Stop' : 'Webcam'}
+                        </button>
+                    </div>
+                </>
+            )}
             {results.map(r => (
                 <div key={r.label} className={styles.testResultBar}>
                     <div className={styles.testResultLabelRow}>
@@ -715,7 +731,7 @@ const MLTrainingPage = ({project, onBack, onUseInBlocks, onUpdateProject, onNewP
     const [trainStatus,    setStatus]      = useState('');
     const [accuracyPoints, setAccPoints]   = useState([]);
     const [showAdvanced,   setAdvanced]    = useState(false);
-    const [epochs,         setEpochs]      = useState(20);
+    const [epochs,         setEpochs]      = useState(50);
     const [batchSize,      setBatchSize]   = useState(16);
     const [learningRate,   setLR]          = useState(0.001);
     const [epochMetrics,   setEpochMetrics] = useState([]);
@@ -768,15 +784,29 @@ const MLTrainingPage = ({project, onBack, onUseInBlocks, onUpdateProject, onNewP
         model.mobileNet      = mobileNetRef.current;
     }, [isTraining, isTrained, labels]); // eslint-disable-line react-hooks/exhaustive-deps
 
-    /* ── Enumerate cameras ── */
+    /* ── Enumerate cameras; re-runs on hot-plug/unplug and after permission is granted ── */
     useEffect(() => {
-        navigator.mediaDevices.enumerateDevices()
-            .then(devs => {
-                const cams = devs.filter(d => d.kind === 'videoinput');
-                setCameras(cams);
-                if (cams.length > 0) setSelectedCam(cams[0].deviceId);
-            })
+        const enumerate = () => {
+            navigator.mediaDevices.enumerateDevices()
+                .then(devs => {
+                    const cams = devs.filter(d => d.kind === 'videoinput');
+                    setCameras(cams);
+                    setSelectedCam(prev => {
+                        if (prev && cams.find(c => c.deviceId === prev)) return prev;
+                        return cams.length > 0 ? cams[0].deviceId : '';
+                    });
+                })
+                .catch(() => {});
+        };
+        enumerate();
+        // Silently probe getUserMedia to unlock real device labels from the OS.
+        // Stops the stream immediately — only needed to populate label strings.
+        // On Windows this resolves without any dialog (auto-granted by OS).
+        navigator.mediaDevices.getUserMedia({video: true, audio: false})
+            .then(stream => { stream.getTracks().forEach(t => t.stop()); enumerate(); })
             .catch(() => {});
+        navigator.mediaDevices.addEventListener('devicechange', enumerate);
+        return () => navigator.mediaDevices.removeEventListener('devicechange', enumerate);
     }, []);
 
     /* ── Load project data (try opened .ob file first, fall back to FS) ── */
@@ -922,7 +952,8 @@ const MLTrainingPage = ({project, onBack, onUseInBlocks, onUpdateProject, onNewP
     /* ── Upload from folder ── */
     const folderInputRef = useRef(null);
     const handleFolderUpload = async e => {
-        const files = Array.from(e.target.files || []).filter(f => f.type.startsWith('image/'));
+        const input = e.target;   // capture DOM ref before any await (React 16 event pooling)
+        const files = Array.from(input.files || []).filter(f => f.type.startsWith('image/'));
         const groups = {};
         for (const f of files) {
             const parts = f.webkitRelativePath ? f.webkitRelativePath.split('/') : [f.name];
@@ -939,7 +970,7 @@ const MLTrainingPage = ({project, onBack, onUseInBlocks, onUpdateProject, onNewP
             })));
             await addImages(cls, urls);
         }
-        e.target.value = '';
+        if (folderInputRef.current) folderInputRef.current.value = '';
     };
 
     /* ── Train model ── */
@@ -1216,8 +1247,8 @@ const MLTrainingPage = ({project, onBack, onUseInBlocks, onUpdateProject, onNewP
                 <span className={styles.webcamLabel}>Select Webcam:</span>
                 <select className={styles.webcamSelect} value={selectedCam} onChange={e => setSelectedCam(e.target.value)}>
                     {cameras.length === 0 && <option value="">No cameras found</option>}
-                    {cameras.map(c => (
-                        <option key={c.deviceId} value={c.deviceId}>{c.label || `Camera (${c.deviceId.slice(0, 8)})`}</option>
+                    {cameras.map((c, idx) => (
+                        <option key={c.deviceId || idx} value={c.deviceId}>{c.label || `Camera ${idx + 1}`}</option>
                     ))}
                 </select>
             </div>
@@ -1293,6 +1324,13 @@ const MLTrainingPage = ({project, onBack, onUseInBlocks, onUpdateProject, onNewP
                                 </div>
                             )}
 
+                            {/* Minimum sample hint */}
+                            {!isTraining && !canTrain && activeLabels.length >= 2 && (
+                                <p className={styles.trainHintText}>
+                                    Add at least 10 images to each class to train your model.
+                                </p>
+                            )}
+
                             {/* Train / Train Again button */}
                             {isTrained ? (
                                 <button className={styles.trainAgainBtn} onClick={trainModel} disabled={isTraining || !canTrain}>
@@ -1317,7 +1355,7 @@ const MLTrainingPage = ({project, onBack, onUseInBlocks, onUpdateProject, onNewP
                                     <span>Epochs</span>
                                     <input className={styles.advancedInput} type="number" value={epochs} min={1} max={200}
                                         onChange={e => setEpochs(Number(e.target.value))}
-                                        onBlur={e => setEpochs(Math.max(1, Math.min(200, Number(e.target.value) || 20)))}/>
+                                        onBlur={e => setEpochs(Math.max(1, Math.min(200, Number(e.target.value) || 50)))}/>
                                 </div>
                                 <div className={styles.advancedRow}>
                                     <span>Batch Size</span>

@@ -20,7 +20,7 @@ const PROJECT_TYPES = [
         icon: '🔢',
         title: 'Numbers',
         desc: 'Train a model to make decisions from number values',
-        disabled: true
+        comingSoon: true
     },
     {
         id: 'sounds',
@@ -84,17 +84,16 @@ const CreateProjectModal = ({onCancel, onCreate, existingNames = []}) => {
                             key={t.id}
                             className={[
                                 styles.typeCard,
-                                t.disabled ? styles.typeCardDisabled : '',
-                                !t.disabled && type === t.id ? styles.typeCardSelected : ''
+                                t.comingSoon ? styles.typeCardComingSoon : '',
+                                !t.comingSoon && type === t.id ? styles.typeCardSelected : ''
                             ].join(' ')}
-                            onClick={() => !t.disabled && setType(t.id)}
+                            onClick={() => !t.comingSoon && setType(t.id)}
                             role="radio"
-                            aria-checked={!t.disabled && type === t.id}
-                            aria-disabled={t.disabled}
-                            tabIndex={t.disabled ? -1 : 0}
-                            onKeyPress={e => !t.disabled && e.key === 'Enter' && setType(t.id)}
+                            aria-checked={!t.comingSoon && type === t.id}
+                            tabIndex={t.comingSoon ? -1 : 0}
+                            onKeyPress={e => !t.comingSoon && e.key === 'Enter' && setType(t.id)}
                         >
-                            {t.disabled && (
+                            {t.comingSoon && (
                                 <span className={styles.comingSoonBadge}>Coming Soon</span>
                             )}
                             <div className={styles.typeCardIcon}>{t.icon}</div>

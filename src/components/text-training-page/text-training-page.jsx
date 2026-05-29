@@ -243,7 +243,7 @@ const TextClassCard = React.forwardRef(({
                         placeholder={`Add a "${label}" example…`}
                         value={inputText}
                         onChange={e => setInput(e.target.value)}
-                        onKeyPress={e => e.key === 'Enter' && handleAdd()}
+                        onKeyDown={e => e.key === 'Enter' && handleAdd()}
                     />
                     <button className={styles.addSampleBtn} onClick={handleAdd} disabled={!inputText.trim()} title="Add">
                         +
@@ -423,12 +423,32 @@ const TextTrainingPage = ({
                     setLabels(fromOb.labels);
                     finalLabels = fromOb.labels;
                 }
-                if (!signal.cancelled) setData(fromOb.trainingData || {});
+                if (!signal.cancelled) {
+                    /* Merge loaded data with any samples the user typed WHILE loading was in
+                       progress (race condition guard). Loaded data is the base; in-memory
+                       samples not yet on disk are appended by ID so nothing is lost. */
+                    setData(prev => {
+                        const base = fromOb.trainingData || {};
+                        const merged = {};
+                        const allLabels = new Set([...Object.keys(base), ...Object.keys(prev)]);
+                        for (const lbl of allLabels) {
+                            const fromDisk = base[lbl] || [];
+                            const diskIds  = new Set(fromDisk.map(s => s.id));
+                            const extra    = (prev[lbl] || []).filter(s => !diskIds.has(s.id));
+                            merged[lbl]    = [...fromDisk, ...extra];
+                        }
+                        return merged;
+                    });
+                }
                 trained = !!(fromOb.modelRestored && !signal.cancelled);
                 setTrained(trained);
             } else {
-                /* Use in-memory data from project object (localStorage) */
-                if (!signal.cancelled) setData(project.trainingData || {});
+                /* Use in-memory data from project object (fallback: no project.json on disk) */
+                if (!signal.cancelled) setData(prev => {
+                    /* Keep any samples already in state; fall back to project prop if empty */
+                    const hasSamples = Object.values(prev).some(arr => arr.length > 0);
+                    return hasSamples ? prev : (project.trainingData || {});
+                });
                 if (project.trained) {
                     const loaded = await loadTextClassifier(project.id, project.labels || labels);
                     trained = !!(loaded && !signal.cancelled);
@@ -487,7 +507,8 @@ const TextTrainingPage = ({
             trained:      isTrained,
             updatedAt:    Date.now()
         });
-        saveTextProject(project, labels, trainingData, isTrained, {showDialog: false}).catch(() => {});
+        saveTextProject(project, labels, trainingData, isTrained, {showDialog: false})
+            .catch(err => console.error('[TextPage] auto-save failed:', err));
     }, [labels, trainingData, isTrained]); // eslint-disable-line react-hooks/exhaustive-deps
 
     /* ── CRUD helpers ── */
@@ -541,9 +562,11 @@ const TextTrainingPage = ({
     /* ── Train ── */
     const activeLabels = labels.filter(l => !disabledLabels.includes(l));
 
+    const underSampledClasses = activeLabels.filter(l => (trainingData[l] || []).length < 10);
+
     const canTrain = !isTraining &&
         activeLabels.length >= 2 &&
-        activeLabels.every(l => (trainingData[l] || []).length >= 1);
+        underSampledClasses.length === 0;
 
     const trainModel = async () => {
         setTraining(true);
@@ -903,6 +926,11 @@ const TextTrainingPage = ({
                             <div className={styles.progressTrack}>
                                 <div className={styles.progressFill} style={{width: `${trainPct}%`}}/>
                             </div>
+                        )}
+                        {!isTraining && !canTrain && activeLabels.length >= 2 && (
+                            <p className={styles.trainHintText}>
+                                Add at least 10 examples to each class to train your model.
+                            </p>
                         )}
                         {isTrained ? (
                             <button className={styles.trainAgainBtn} onClick={trainModel} disabled={isTraining || !canTrain}>

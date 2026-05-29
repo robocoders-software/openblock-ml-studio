@@ -7,6 +7,57 @@ import MLLoader          from '../ml-loader/ml-loader.jsx';
 import {deleteProjectData} from '../../lib/ml-engine.js';
 import {saveTextProject, saveImageProject, saveAudioProject} from '../../lib/project-persistence.js';
 
+class TrainingErrorBoundary extends React.Component {
+    constructor (props) {
+        super(props);
+        this.state = {error: null};
+        this.handleRetry = this.handleRetry.bind(this);
+    }
+    static getDerivedStateFromError (error) {
+        return {error};
+    }
+    componentDidCatch (error, info) {
+        console.error('[MLStudio] Unhandled render error:', error, info && info.componentStack);
+    }
+    handleRetry () {
+        this.setState({error: null});
+        if (this.props.onRetry) this.props.onRetry();
+    }
+    render () {
+        if (this.state.error) {
+            return (
+                <div style={{
+                    display: 'flex', flexDirection: 'column', alignItems: 'center',
+                    justifyContent: 'center', height: '100vh',
+                    fontFamily: '"Helvetica Neue", Helvetica, Arial, sans-serif',
+                    background: '#f8f9fa', color: '#333', padding: 40, textAlign: 'center'
+                }}>
+                    <div style={{fontSize: 48, marginBottom: 16}}>⚠️</div>
+                    <h2 style={{margin: '0 0 8px', fontSize: 22, fontWeight: 700}}>Something went wrong</h2>
+                    <p style={{margin: '0 0 24px', color: '#888', fontSize: 14, maxWidth: 420}}>
+                        {this.state.error.message || 'An unexpected error occurred in the ML environment.'}
+                    </p>
+                    <button
+                        onClick={this.handleRetry}
+                        style={{
+                            background: '#004AAD', color: 'white', border: 'none',
+                            borderRadius: 10, padding: '11px 28px', fontSize: 14,
+                            fontWeight: 700, cursor: 'pointer'
+                        }}
+                    >
+                        Go Back to Projects
+                    </button>
+                </div>
+            );
+        }
+        return this.props.children;
+    }
+}
+TrainingErrorBoundary.propTypes = {
+    children: PropTypes.node,
+    onRetry:  PropTypes.func
+};
+
 const getIpc = () => {
     try { return window.require('electron').ipcRenderer; } catch (_) { return null; }
 };
@@ -249,12 +300,14 @@ const MLStudioApp = ({onEnterBlocks, onBack}) => {
     /* ── View routing ── */
     if (view === 'mlTraining' && activeProject) {
         return (
-            <MLTrainingPage
-                project={activeProject}
-                onBack={handleBackToList}
-                onUseInBlocks={onEnterBlocks}
-                onUpdateProject={updateProject}
-            />
+            <TrainingErrorBoundary onRetry={handleBackToList}>
+                <MLTrainingPage
+                    project={activeProject}
+                    onBack={handleBackToList}
+                    onUseInBlocks={onEnterBlocks}
+                    onUpdateProject={updateProject}
+                />
+            </TrainingErrorBoundary>
         );
     }
 

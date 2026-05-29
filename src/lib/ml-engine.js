@@ -126,19 +126,14 @@ const loadImg = src =>
     });
 
 /* ── Internal: build classification head ──
-   Architecture mirrors ML for Kids:
-     dense(relu) → dropout(0.2) → dense(logits — no activation)
-   Loss is softmaxCrossEntropy (from_logits equivalent) with label smoothing.
+   Intentionally minimal: Dropout → Dense(logits).
+   No hidden Dense(128) layer — with small datasets (5-20 images) that layer
+   introduces ~32k extra parameters that overfit badly. ML for Kids and
+   Teachable Machine both use this simpler structure.
 ── */
 const buildHead = (tf, inputDim, numClasses) => {
     const model = tf.sequential();
-    model.add(tf.layers.dense({
-        inputShape: [inputDim],
-        units:      128,
-        activation: 'relu',
-        kernelInitializer: 'varianceScaling'
-    }));
-    model.add(tf.layers.dropout({rate: 0.2}));
+    model.add(tf.layers.dropout({inputShape: [inputDim], rate: 0.2}));
     model.add(tf.layers.dense({
         units:      numClasses,
         activation: 'linear',              // raw logits; softmax applied in loss and wrapHead
@@ -182,7 +177,7 @@ const wrapHead = (head, labels) => ({
 export const trainImages = async (
     labels, trainingData, projectId,
     onStatus, onProgress,
-    {epochs = 20, batchSize = 32, learningRate = 0.005, onEpochEnd} = {}
+    {epochs = 50, batchSize = 32, learningRate = 0.001, onEpochEnd} = {}
 ) => {
     const tf  = await getTF();
     const net = await getMobileNet(onStatus);
@@ -234,15 +229,19 @@ export const trainImages = async (
     onStatus && onStatus('Building & training classification head…');
     const head = buildHead(tf, embDim, labels.length);
     head.compile({
-        optimizer: tf.train.sgd(learningRate),
+        // Adam converges faster than plain SGD for small datasets; momentum is baked in.
+        optimizer: tf.train.adam(learningRate),
         loss:      (ys_, logits) =>
-            tf.losses.softmaxCrossEntropy(ys_, logits, undefined, 0.1), // label smoothing
+            tf.losses.softmaxCrossEntropy(ys_, logits, undefined, 0.1),
         metrics:   ['accuracy']
     });
 
-    const safeEpochs  = Math.max(1, Math.round(epochs));
-    const valSplit    = Math.min(0.5, Math.max(0.15, 1.0 / xs.shape[0]));
-    const trainCount  = Math.floor(xs.shape[0] * (1 - valSplit));
+    const N          = xs.shape[0];
+    const safeEpochs = Math.max(1, Math.round(epochs));
+    // With fewer than 20 total images, a validation split wastes too many training examples.
+    // ML for Kids also skips validation and trains on the full set.
+    const valSplit    = N >= 20 ? Math.min(0.2, Math.max(0.1, 2.0 / N)) : 0;
+    const trainCount  = valSplit > 0 ? Math.floor(N * (1 - valSplit)) : N;
     const effectiveBs = Math.max(1, Math.min(Math.max(1, Math.round(batchSize)), trainCount));
 
     await head.fit(xs, ys, {
@@ -252,12 +251,12 @@ export const trainImages = async (
         validationSplit: valSplit,
         callbacks: {
             onEpochEnd: (epoch, logs) => {
-                const valAcc   = logs.val_acc      || logs.val_accuracy  || 0;
-                const trainAcc = logs.acc          || logs.accuracy      || 0;
-                const valLoss  = logs.val_loss     || 0;
-                const trainLoss = logs.loss        || 0;
-                const displayAcc = valAcc || trainAcc;
-                onStatus && onStatus(`Epoch ${epoch + 1}/${safeEpochs}  acc: ${(displayAcc * 100).toFixed(1)}%  loss: ${trainLoss.toFixed(4)}`);
+                const valAcc    = logs.val_acc   || logs.val_accuracy || 0;
+                const trainAcc  = logs.acc       || logs.accuracy     || 0;
+                const valLoss   = logs.val_loss  || 0;
+                const trainLoss = logs.loss      || 0;
+                const accLabel  = valSplit > 0 ? `val_acc: ${(valAcc * 100).toFixed(1)}%` : `acc: ${(trainAcc * 100).toFixed(1)}%`;
+                onStatus && onStatus(`Epoch ${epoch + 1}/${safeEpochs}  ${accLabel}  loss: ${trainLoss.toFixed(4)}`);
                 onProgress && onProgress(50 + Math.round(((epoch + 1) / safeEpochs) * 50));
                 onEpochEnd && onEpochEnd(epoch, {trainAcc, valAcc, trainLoss, valLoss});
             }
@@ -398,6 +397,14 @@ let _transferRec      = null;   // current project's transfer recognizer
 let _soundProjectId   = null;
 let _soundModelInfo   = null;   // { numFrames, fftSize }
 
+const _loadScriptTag = url => new Promise((resolve, reject) => {
+    const s = document.createElement('script');
+    s.src = url;
+    s.onload = resolve;
+    s.onerror = reject;
+    document.head.appendChild(s);
+});
+
 const loadSpeechCommandsLib = async () => {
     if (_scLib) return _scLib;
     if (typeof window !== 'undefined' && window.speechCommands) {
@@ -407,16 +414,49 @@ const loadSpeechCommandsLib = async () => {
     const tf = await getTF();
     // speech-commands UMD needs window.tf exposed globally before the script runs
     if (typeof window !== 'undefined') window.tf = tf;
-    await new Promise((resolve, reject) => {
-        const s = document.createElement('script');
-        s.src = SPEECH_COMMANDS_URL;
-        s.onload = resolve;
-        s.onerror = () => reject(new Error(
+
+    // 1. Try loading via the custom protocol — up to 3 attempts with 800ms gaps.
+    //    Transient failures happen on first run (slow disk, protocol handler not warm)
+    //    and are transparently recovered here without showing the error overlay.
+    let loaded = false;
+    for (let i = 0; i < 3; i++) {
+        if (i > 0) await new Promise(r => setTimeout(r, 800));
+        try {
+            await _loadScriptTag(SPEECH_COMMANDS_URL);
+            loaded = true;
+            break;
+        } catch (_) { /* try again */ }
+    }
+
+    // 2. Protocol consistently failed — fall back to IPC file read + blob URL.
+    //    This bypasses the custom protocol entirely and is immune to protocol
+    //    registration timing issues.
+    if (!loaded) {
+        const ipc = _getIpc();
+        if (ipc) {
+            try {
+                const buf = await ipc.invoke('read-external-resource', 'libs/speech-commands.min.js');
+                if (buf) {
+                    const blob   = new Blob([buf], {type: 'text/javascript'});
+                    const blobUrl = URL.createObjectURL(blob);
+                    try {
+                        await _loadScriptTag(blobUrl);
+                        loaded = true;
+                    } finally {
+                        URL.revokeObjectURL(blobUrl);
+                    }
+                }
+            } catch (_) { /* fall through to error below */ }
+        }
+    }
+
+    if (!loaded) {
+        throw new Error(
             'Could not load speech-commands library from local resources. ' +
             'Make sure external-resources/libs/speech-commands.min.js exists in the app directory.'
-        ));
-        document.head.appendChild(s);
-    });
+        );
+    }
+
     _scLib = window.speechCommands;
     if (!_scLib) throw new Error('speech-commands did not initialise correctly.');
     return _scLib;
@@ -471,11 +511,52 @@ export const collectAudioExample = async label => {
     return _transferRec.collectExample(label);
 };
 
+/* ── Internal: adaptive training config (mirrors ML for Kids' _prepareTrainingConfig) ──
+   tiny:    avg < 15 samples/class OR total < 30  → 80 epochs, bs 64,  no val split, no augment
+   default: avg 15–50 samples/class               → 50 epochs, bs 128, val 0.15, augment 0.3
+   huge:    avg > 50 samples/class                → 40 epochs, bs 128, val 0.20, augment 0.3
+── */
+const _prepareSoundTrainingConfig = (totalSamples, numLabels, userEpochs, userBatch) => {
+    const avg = totalSamples / Math.max(1, numLabels);
+    const tiny    = avg < 15 || totalSamples < 30;
+    const huge    = avg > 50;
+
+    if (tiny) {
+        return {
+            epochs:                   userEpochs || 80,
+            batchSize:                userBatch  || 64,
+            validationSplit:          null,
+            windowHopRatio:           0.25,
+            augmentByMixingNoiseRatio: null,
+            fineTuningEpochs:         null,
+            optimizer:                'sgd'
+        };
+    }
+    if (huge) {
+        return {
+            epochs:                   userEpochs || 40,
+            batchSize:                userBatch  || 128,
+            validationSplit:          0.2,
+            windowHopRatio:           0.25,
+            augmentByMixingNoiseRatio: 0.3,
+            fineTuningEpochs:         12,
+            optimizer:                'sgd'
+        };
+    }
+    return {
+        epochs:                   userEpochs || 50,
+        batchSize:                userBatch  || 128,
+        validationSplit:          0.15,
+        windowHopRatio:           0.25,
+        augmentByMixingNoiseRatio: 0.3,
+        fineTuningEpochs:         15,
+        optimizer:                'sgd'
+    };
+};
+
 /* ── Public: train transfer model from stored spectrogram data ── */
 export const trainSounds = async (labels, trainingData, projectId, onStatus, onProgress, config = {}) => {
-    const {epochs: rawEpochs = 50, batchSize: rawBatch = 32, onEpochEnd: epochCb} = config;
-    const epochs    = Math.max(1, Math.round(rawEpochs));
-    const batchSize = Math.max(1, Math.round(rawBatch));
+    const {epochs: rawEpochs, batchSize: rawBatch, onEpochEnd: epochCb} = config;
     if (!_baseRecognizer || !_soundModelInfo) throw new Error('Audio engine not initialised.');
 
     /* Always create a fresh transfer recognizer before training.
@@ -506,29 +587,34 @@ export const trainSounds = async (labels, trainingData, projectId, onStatus, onP
 
     _transferRec.collateTransferWords();
 
+    const tc = _prepareSoundTrainingConfig(added, labels.length, rawEpochs, rawBatch);
+    const totalEpochs = tc.epochs + (tc.fineTuningEpochs || 0);
+
     onStatus && onStatus('Training audio model…');
-    const valSplitAudio  = Math.min(0.5, Math.max(0.15, 1.0 / added));
-    const trainCountAudio = Math.floor(added * (1 - valSplitAudio));
-    const effectiveBsAudio = Math.max(1, Math.min(batchSize, trainCountAudio));
-    await _transferRec.train({
-        epochs,
-        batchSize: effectiveBsAudio,
-        validationSplit: valSplitAudio,
-        windowHopRatio:  0.25,
-        optimizer:       'sgd',
+
+    const trainCfg = {
+        epochs:          tc.epochs,
+        batchSize:       tc.batchSize,
+        windowHopRatio:  tc.windowHopRatio,
+        optimizer:       tc.optimizer,
         callback: {
             onEpochEnd: async (epoch, logs) => {
-                const pct = Math.round(((epoch + 1) / epochs) * 100);
+                const pct = Math.round(((epoch + 1) / totalEpochs) * 100);
                 onProgress && onProgress(pct);
-                const acc = logs.val_acc    !== undefined ? logs.val_acc
-                          : logs.val_accuracy !== undefined ? logs.val_accuracy
-                          : logs.acc          !== undefined ? logs.acc
+                const acc = logs.val_acc       !== undefined ? logs.val_acc
+                          : logs.val_accuracy  !== undefined ? logs.val_accuracy
+                          : logs.acc           !== undefined ? logs.acc
                           : (logs.accuracy || 0);
-                onStatus && onStatus(`Epoch ${epoch + 1}/${epochs}  acc: ${(acc * 100).toFixed(1)}%`);
+                onStatus && onStatus(`Epoch ${epoch + 1}/${tc.epochs}  acc: ${(acc * 100).toFixed(1)}%`);
                 epochCb && epochCb(epoch, acc);
             }
         }
-    });
+    };
+    if (tc.validationSplit !== null) trainCfg.validationSplit = tc.validationSplit;
+    if (tc.augmentByMixingNoiseRatio !== null) trainCfg.augmentByMixingNoiseRatio = tc.augmentByMixingNoiseRatio;
+    if (tc.fineTuningEpochs !== null) trainCfg.fineTuningEpochs = tc.fineTuningEpochs;
+
+    await _transferRec.train(trainCfg);
 
     await _transferRec.save(makeFSModelHandler(projectId, 'audio-model'));
     await fsWriteFile(projectId, 'audio-model/labels.json', JSON.stringify(labels));
@@ -551,6 +637,11 @@ export const loadSoundClassifier = async (projectId, labels) => {
 /* ── Public: live mic classification ── */
 export const startListening = async (callback, options = {}) => {
     if (!_transferRec) throw new Error('Audio engine not ready.');
+    // Use 0.0 threshold so ALL predictions always fire (scores always sum to 1).
+    // Callers that want to suppress low-confidence results should filter in the callback.
+    // ML for Kids uses 0.70 for blocks (high confidence gate), but the testing
+    // panel needs all scores to always update the bars.
+    const threshold = options.threshold !== undefined ? options.threshold : 0.0;
     return _transferRec.listen(result => {
         const lbls = _transferRec.wordLabels();
         if (!lbls) return;
@@ -559,7 +650,7 @@ export const startListening = async (callback, options = {}) => {
             prob: (result.scores[i] || 0) * 100
         })).sort((a, b) => b.prob - a.prob);
         callback(matches);
-    }, {probabilityThreshold: options.threshold || 0.5});
+    }, {probabilityThreshold: threshold});
 };
 
 export const stopListening = async () => {

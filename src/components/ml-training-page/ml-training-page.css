@@ -704,6 +704,12 @@
     color: #666;
     text-align: center;
 }
+.trainHintText {
+    font-size: 11px;
+    color: #E05C3D;
+    text-align: center;
+    margin: 4px 0;
+}
 .trainSuccessText {
     font-size: 11px;
     font-weight: 700;

@@ -107,6 +107,7 @@
 }
 
 .typeCard {
+    position: relative;
     border: 2px solid #e8e8e8;
     border-radius: 12px;
     padding: 16px 14px;
@@ -132,9 +133,17 @@
 .typeCardDisabled {
     opacity: 0.45;
     cursor: not-allowed;
-    position: relative;
 }
 .typeCardDisabled:hover {
+    border-color: #e8e8e8;
+    background: white;
+    box-shadow: none;
+}
+
+.typeCardComingSoon {
+    cursor: default;
+}
+.typeCardComingSoon:hover {
     border-color: #e8e8e8;
     background: white;
     box-shadow: none;

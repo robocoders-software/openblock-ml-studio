@@ -32,6 +32,9 @@ const CLASS_COLORS = ['#E05C3D', '#2EAA7E', '#004AAD', '#003A8C', '#F39C12', '#E
 const MAX_THUMBS   = 9;
 const generateId   = () => Math.random().toString(36).slice(2, 10);
 
+const BACKGROUND_NOISE_LABEL = '_background_noise_';
+const BG_NOISE_COLOR = '#6B7280';
+
 /* Render spectrogram data as a colored waveform thumbnail (bar-chart of RMS per frame).
    Normalises to the loudest frame so quiet recordings still show a visible waveform. */
 const renderSpectrumThumb = (spectrogramData, frameSize, color) => {
@@ -106,9 +109,11 @@ const AudioClassCard = React.forwardRef(({
     label, colorIdx, samples, onRecorded, onDeleteSample, onDeleteAllSamples,
     onRename, onDelete, canDelete, onToggleDisable, isDisabled, projectId, selectedMicId, isEngineReady,
     menuOpen, onOpenMenu, onCloseMenu,
-    isMicActive, onRequestMic, onReleaseMic
+    isMicActive, onRequestMic, onReleaseMic,
+    isBgNoise
 }, ref) => {
-    const color = CLASS_COLORS[colorIdx % CLASS_COLORS.length];
+    const color = isBgNoise ? BG_NOISE_COLOR : CLASS_COLORS[colorIdx % CLASS_COLORS.length];
+    const displayLabel = isBgNoise ? 'Background Noise' : label;
     const [editing,       setEditing]  = useState(false);
     const [newName,       setNewName]  = useState(label);
     const [confirmAction, setConfirm]  = useState(null);
@@ -116,6 +121,7 @@ const AudioClassCard = React.forwardRef(({
     const [isRecording,   setRecording] = useState(false);
     const [thumbData,     setThumbData] = useState([]);
     const [micError,      setMicError]  = useState('');
+    const [micLoading,    setMicLoading] = useState(false);
     const noiseFillRef  = useRef(null);  // direct DOM ref — avoids re-renders for meter
     const [recTime,       setRecTime]   = useState(0);    // seconds elapsed
     const [playingId,     setPlayingId] = useState(null); // sample id being played
@@ -123,6 +129,7 @@ const AudioClassCard = React.forwardRef(({
 
     const liveCanvasRef    = useRef(null);
     const analyserRef      = useRef(null);
+    const audioCtxRef      = useRef(null);
     const vizStreamRef     = useRef(null);
     const animFrameRef     = useRef(null);
     const isHoldingRef     = useRef(false);
@@ -132,6 +139,7 @@ const AudioClassCard = React.forwardRef(({
     const recTimerRef      = useRef(null);
     const mediaRecorderRef = useRef(null);
     const playingAudioRef  = useRef(null);
+    const startingMicRef   = useRef(false);   // re-entry guard for startMic
 
     /* Close menu when clicking outside */
     useEffect(() => {
@@ -165,14 +173,20 @@ const AudioClassCard = React.forwardRef(({
     useEffect(() => {
         if (!isMicActive && vizStreamRef.current) {
             isHoldingRef.current = false;
+            startingMicRef.current = false;
             clearInterval(recTimerRef.current);
             if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
             vizStreamRef.current.getTracks().forEach(t => t.stop());
+            if (audioCtxRef.current) {
+                audioCtxRef.current.close().catch(() => {});
+                audioCtxRef.current = null;
+            }
             vizStreamRef.current   = null;
             analyserRef.current    = null;
             rendererRef.current    = null;
             setShowMic(false);
             setRecording(false);
+            setMicLoading(false);
             if (noiseFillRef.current) { noiseFillRef.current.style.width = '0%'; }
             setRecTime(0);
             setMicError('');
@@ -183,7 +197,7 @@ const AudioClassCard = React.forwardRef(({
     const friendlyMicError = e => {
         const n = e.name || '';
         if (n === 'NotAllowedError' || n === 'PermissionDeniedError')
-            return {title: 'Permission Denied', msg: 'Microphone access was blocked. Allow microphone permission in your browser or system settings.'};
+            return {title: 'Permission Denied', msg: 'Microphone access was denied. Click \'Try Again\' to be prompted to allow access.'};
         if (n === 'NotFoundError' || n === 'DevicesNotFoundError')
             return {title: 'No Microphone Found', msg: 'No microphone device was detected. Connect a microphone and try again.'};
         if (n === 'NotReadableError' || n === 'TrackStartError')
@@ -192,6 +206,9 @@ const AudioClassCard = React.forwardRef(({
     };
 
     const startMic = async () => {
+        if (startingMicRef.current) return; // prevent concurrent calls while permission dialog is open
+        startingMicRef.current = true;
+        setMicLoading(true);
         onRequestMic();
         setMicError('');
         try {
@@ -202,18 +219,21 @@ const AudioClassCard = React.forwardRef(({
             const stream = await navigator.mediaDevices.getUserMedia(constraints);
             vizStreamRef.current = stream;
             const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            audioCtxRef.current = audioCtx;
             const source   = audioCtx.createMediaStreamSource(stream);
             const analyser = audioCtx.createAnalyser();
-            analyser.fftSize = 1024; // more sample points → denser, richer waveform
+            analyser.fftSize = 1024;
             source.connect(analyser);
             analyserRef.current = analyser;
-            // Set showMic AFTER analyser is ready so the useEffect sees it immediately.
             setShowMic(true);
         } catch (e) {
             const {title, msg} = friendlyMicError(e);
             setMicError(`${title}|||${msg}`);
             setShowMic(true); // show error UI
             onReleaseMic();
+        } finally {
+            startingMicRef.current = false;
+            setMicLoading(false);
         }
     };
 
@@ -227,6 +247,10 @@ const AudioClassCard = React.forwardRef(({
         }
         if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
         if (vizStreamRef.current) vizStreamRef.current.getTracks().forEach(t => t.stop());
+        if (audioCtxRef.current) {
+            audioCtxRef.current.close().catch(() => {});
+            audioCtxRef.current = null;
+        }
         vizStreamRef.current  = null;
         analyserRef.current   = null;
         rendererRef.current   = null;
@@ -412,16 +436,18 @@ const AudioClassCard = React.forwardRef(({
                             onKeyPress={e => e.key === 'Enter' && commitRename()}
                             onBlur={commitRename}/>
                     ) : (
-                        <span className={styles.classCardTitle}>{label}</span>
+                        <span className={styles.classCardTitle}>{displayLabel}</span>
                     )}
-                    <button className={styles.classCardEditBtn}
-                        onClick={() => { setEditing(true); setNewName(label); }}
-                        title="Rename">
-                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                            <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
-                            <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
-                        </svg>
-                    </button>
+                    {!isBgNoise && (
+                        <button className={styles.classCardEditBtn}
+                            onClick={() => { setEditing(true); setNewName(label); }}
+                            title="Rename">
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                            </svg>
+                        </button>
+                    )}
                 </div>
                 {isDisabled && <span className={styles.disabledBadge}>DISABLED</span>}
                 <div style={{position: 'relative'}} ref={menuRef}>
@@ -444,13 +470,17 @@ const AudioClassCard = React.forwardRef(({
                                 </div>
                             ) : (
                                 <>
-                                    <button onClick={() => { setEditing(true); setNewName(label); onCloseMenu(); }}>Rename class</button>
-                                    <button onClick={() => { onToggleDisable(label); onCloseMenu(); }}>
-                                        {isDisabled ? '✓ Enable class' : 'Disable class'}
-                                    </button>
+                                    {!isBgNoise && (
+                                        <button onClick={() => { setEditing(true); setNewName(label); onCloseMenu(); }}>Rename class</button>
+                                    )}
+                                    {!isBgNoise && (
+                                        <button onClick={() => { onToggleDisable(label); onCloseMenu(); }}>
+                                            {isDisabled ? '✓ Enable class' : 'Disable class'}
+                                        </button>
+                                    )}
                                     <div className={styles.menuDivider}/>
                                     <button className={styles.danger} onClick={() => setConfirm('deleteAll')}>Delete all samples</button>
-                                    {canDelete && (
+                                    {canDelete && !isBgNoise && (
                                         <button className={styles.danger} onClick={() => setConfirm('deleteClass')}>Delete class</button>
                                     )}
                                 </>
@@ -462,6 +492,12 @@ const AudioClassCard = React.forwardRef(({
 
             {/* Body */}
             <div className={`${styles.classCardBody}${showMic ? ` ${styles.classCardBodyCam}` : ''}`}>
+                {isBgNoise && !showMic && (
+                    <div className={styles.bgNoiseBanner}>
+                        Record ambient room sounds — silence, fan noise, keyboard, etc. Helps the model distinguish real sounds from background noise.
+                    </div>
+                )}
+                <div className={styles.classCardBodyInner}>
                 {/* Left: mic controls */}
                 <div className={styles.classCardLeft}>
                     {showMic ? (
@@ -513,14 +549,23 @@ const AudioClassCard = React.forwardRef(({
                     ) : (
                         <div className={styles.idleAddMode}>
                             <p className={styles.addSamplesLabel}>Add Audio Samples</p>
-                            <button className={styles.micIdleBtn} onClick={startMic}>
-                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" width="28" height="28">
-                                    <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
-                                    <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
-                                    <line x1="12" y1="19" x2="12" y2="23"/>
-                                    <line x1="8" y1="23" x2="16" y2="23"/>
-                                </svg>
-                                Microphone
+                            <button
+                                className={styles.micIdleBtn}
+                                onClick={startMic}
+                                disabled={micLoading}
+                                style={micLoading ? {opacity: 0.6, cursor: 'wait'} : undefined}
+                            >
+                                {micLoading ? (
+                                    <Spinner small level="info" />
+                                ) : (
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" width="28" height="28">
+                                        <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
+                                        <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+                                        <line x1="12" y1="19" x2="12" y2="23"/>
+                                        <line x1="8" y1="23" x2="16" y2="23"/>
+                                    </svg>
+                                )}
+                                {micLoading ? 'Waiting for permission…' : 'Microphone'}
                             </button>
                         </div>
                     )}
@@ -554,6 +599,7 @@ const AudioClassCard = React.forwardRef(({
                         </div>
                     )}
                 </div>
+                </div>{/* classCardBodyInner */}
             </div>
         </div>
     );
@@ -579,17 +625,19 @@ AudioClassCard.propTypes = {
     onCloseMenu:        PropTypes.func.isRequired,
     isMicActive:        PropTypes.bool.isRequired,
     onRequestMic:       PropTypes.func.isRequired,
-    onReleaseMic:       PropTypes.func.isRequired
+    onReleaseMic:       PropTypes.func.isRequired,
+    isBgNoise:          PropTypes.bool
 };
 
 /* ── Audio Testing Panel ── */
-const AudioTestingPanel = ({isTrained, labels, labelColorMap}) => {
+const AudioTestingPanel = React.forwardRef(({isTrained, labels, labelColorMap}, ref) => {
     const [isListening, setListening] = useState(false);
     const [results,     setResults]   = useState([]);
     const [listenErr,   setListenErr] = useState('');
 
     const testCanvasRef    = useRef(null);
     const testAnalyserRef  = useRef(null);
+    const testAudioCtxRef  = useRef(null);
     const testStreamRef    = useRef(null);
     const testAnimRef      = useRef(null);
     const testRendererRef  = useRef(null);
@@ -634,6 +682,7 @@ const AudioTestingPanel = ({isTrained, labels, labelColorMap}) => {
             const stream = await navigator.mediaDevices.getUserMedia({audio: true, video: false});
             testStreamRef.current = stream;
             const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            testAudioCtxRef.current = audioCtx;
             const source   = audioCtx.createMediaStreamSource(stream);
             const analyser = audioCtx.createAnalyser();
             analyser.fftSize = 1024;
@@ -646,11 +695,27 @@ const AudioTestingPanel = ({isTrained, labels, labelColorMap}) => {
     const stopTestViz = () => {
         if (testAnimRef.current) cancelAnimationFrame(testAnimRef.current);
         if (testStreamRef.current) testStreamRef.current.getTracks().forEach(t => t.stop());
+        if (testAudioCtxRef.current) {
+            testAudioCtxRef.current.close().catch(() => {});
+            testAudioCtxRef.current = null;
+        }
         testStreamRef.current   = null;
         testAnalyserRef.current = null;
         testRendererRef.current = null;
         if (testNoiseFillRef.current) testNoiseFillRef.current.style.width = '0%';
     };
+
+    /* Expose a forceStop method so the parent can stop the panel before re-training */
+    React.useImperativeHandle(ref, () => ({
+        forceStop: async () => {
+            if (isListening) {
+                setListening(false);
+                setResults([]);
+                stopTestViz();
+                await stopListening().catch(() => {});
+            }
+        }
+    }), [isListening]); // eslint-disable-line react-hooks/exhaustive-deps
 
     const toggle = async () => {
         if (isListening) {
@@ -696,15 +761,16 @@ const AudioTestingPanel = ({isTrained, labels, labelColorMap}) => {
                     {results.length > 0 && (
                         <div className={styles.testOutputSection}>
                             <p className={styles.testOutputLabel}>Output</p>
-                            {/* Render in fixed label order so rows never swap positions */}
-                            {labels.map(lbl => {
+                            {/* Show only user-defined classes — background noise is internal */}
+                            {labels.filter(lbl => lbl !== BACKGROUND_NOISE_LABEL).map(lbl => {
                                 const r     = results.find(x => x.label === lbl);
                                 const prob  = r ? (r.prob || 0) : 0;
                                 const color = (labelColorMap && labelColorMap[lbl]) || '#004AAD';
+                                const displayName = lbl;
                                 return (
                                     <div key={lbl} className={styles.testResultBar}>
                                         <div className={styles.testResultLabelRow}>
-                                            <span>{lbl}</span>
+                                            <span>{displayName}</span>
                                             <span>{Math.round(prob)}%</span>
                                         </div>
                                         <div className={styles.testResultTrack}>
@@ -736,7 +802,8 @@ const AudioTestingPanel = ({isTrained, labels, labelColorMap}) => {
             {listenErr && <p style={{color: '#e53935', fontSize: 11}}>{listenErr}</p>}
         </div>
     );
-};
+});
+AudioTestingPanel.displayName = 'AudioTestingPanel';
 AudioTestingPanel.propTypes = {
     isTrained:     PropTypes.bool.isRequired,
     labels:        PropTypes.array.isRequired,
@@ -745,7 +812,10 @@ AudioTestingPanel.propTypes = {
 
 /* ── Main Audio Training Page ── */
 const AudioTrainingPage = ({project, onBack, onUseInBlocks, onUpdateProject, onNewProject, onNewMLProject, onOpenMLProject}) => {
-    const [labels,        setLabels]   = useState(project.labels || ['Class 1', 'Class 2']);
+    const [labels,        setLabels]   = useState(() => {
+        const base = project.labels && project.labels.length > 0 ? project.labels : ['Class 1', 'Class 2'];
+        return base.includes(BACKGROUND_NOISE_LABEL) ? base : [BACKGROUND_NOISE_LABEL, ...base];
+    });
     const [trainingData,  setData]     = useState({});
     const [loadingData,   setLoading]  = useState(true);
     const [engineReady,   setReady]    = useState(false);
@@ -783,17 +853,31 @@ const AudioTrainingPage = ({project, onBack, onUseInBlocks, onUpdateProject, onN
     const classCardRefs  = useRef([]);
     const trainCardRef   = useRef(null);
     const testCardRef    = useRef(null);
+    const testPanelRef   = useRef(null);
     const [svgPaths,     setSvgPaths] = useState([]);
 
-    /* Enumerate microphones */
+    /* Enumerate microphones; re-runs on hot-plug/unplug and after permission is granted */
     useEffect(() => {
-        navigator.mediaDevices.enumerateDevices()
-            .then(devs => {
-                const ms = devs.filter(d => d.kind === 'audioinput');
-                setMics(ms);
-                if (ms.length > 0) setSelMic(ms[0].deviceId);
-            })
+        const enumerate = () => {
+            navigator.mediaDevices.enumerateDevices()
+                .then(devs => {
+                    const ms = devs.filter(d => d.kind === 'audioinput');
+                    setMics(ms);
+                    setSelMic(prev => {
+                        if (prev && ms.find(m => m.deviceId === prev)) return prev;
+                        return ms.length > 0 ? ms[0].deviceId : '';
+                    });
+                })
+                .catch(() => {});
+        };
+        enumerate();
+        // Silently probe getUserMedia to unlock real device labels from the OS.
+        // Stops the stream immediately — only needed to populate label strings.
+        navigator.mediaDevices.getUserMedia({audio: true, video: false})
+            .then(stream => { stream.getTracks().forEach(t => t.stop()); enumerate(); })
             .catch(() => {});
+        navigator.mediaDevices.addEventListener('devicechange', enumerate);
+        return () => navigator.mediaDevices.removeEventListener('devicechange', enumerate);
     }, []);
 
     /* Init speech-commands engine once */
@@ -823,8 +907,11 @@ const AudioTrainingPage = ({project, onBack, onUseInBlocks, onUpdateProject, onN
             if (fromOb && !signal.cancelled) {
                 if (fromOb.name) onUpdateProject({...project, name: fromOb.name});
                 if (fromOb.labels && fromOb.labels.length >= 2) {
-                    setLabels(fromOb.labels);
-                    finalLabels = fromOb.labels;
+                    const loaded = fromOb.labels.includes(BACKGROUND_NOISE_LABEL)
+                        ? fromOb.labels
+                        : [BACKGROUND_NOISE_LABEL, ...fromOb.labels];
+                    setLabels(loaded);
+                    finalLabels = loaded;
                 }
                 if (!signal.cancelled) setData(fromOb.trainingData || {});
                 trained = !!(fromOb.modelRestored && !signal.cancelled);
@@ -931,7 +1018,8 @@ const AudioTrainingPage = ({project, onBack, onUseInBlocks, onUpdateProject, onN
     }, [labels]);
 
     const deleteClass = useCallback(name => {
-        if (labels.length <= 2) return;
+        if (name === BACKGROUND_NOISE_LABEL) return;
+        if (labels.filter(l => l !== BACKGROUND_NOISE_LABEL).length <= 2) return;
         setLabels(l => l.filter(x => x !== name));
         setData(d => { const c = {...d}; delete c[name]; return c; });
         setTrained(false);
@@ -946,11 +1034,23 @@ const AudioTrainingPage = ({project, onBack, onUseInBlocks, onUpdateProject, onN
 
     /* Train */
     const trainModel = async () => {
-        const activeTrainLabels = labels.filter(l => !disabledLabels.includes(l));
-        if (activeTrainLabels.length < 2 || !activeTrainLabels.every(l => (trainingData[l] || []).length >= 10)) {
+        /* Stop any active test-panel listening before training replaces _transferRec */
+        if (testPanelRef.current && testPanelRef.current.forceStop) {
+            await testPanelRef.current.forceStop();
+        }
+
+        const userActiveLabels = labels.filter(l => l !== BACKGROUND_NOISE_LABEL && !disabledLabels.includes(l));
+        const bgSamples = trainingData[BACKGROUND_NOISE_LABEL] || [];
+
+        if (userActiveLabels.length < 2 || !userActiveLabels.every(l => (trainingData[l] || []).length >= 10)) {
             setStatus('Need at least 2 enabled classes, each with at least 10 audio samples.');
             return;
         }
+        // Include background noise in training only if the user recorded samples for it
+        const activeTrainLabels = bgSamples.length > 0
+            ? [BACKGROUND_NOISE_LABEL, ...userActiveLabels]
+            : userActiveLabels;
+
         setTraining(true);
         setTrainPct(0);
         setAccPts([{x: 0, y: 0}]);
@@ -1088,9 +1188,10 @@ const AudioTrainingPage = ({project, onBack, onUseInBlocks, onUpdateProject, onN
     }, [recalcCurves]);
 
     const activeLabels = labels.filter(l => !disabledLabels.includes(l));
+    const userActiveLabels = activeLabels.filter(l => l !== BACKGROUND_NOISE_LABEL);
     const canTrain = !isTraining && engineReady &&
-        activeLabels.length >= 2 &&
-        activeLabels.every(l => (trainingData[l] || []).length >= 10);
+        userActiveLabels.length >= 2 &&
+        userActiveLabels.every(l => (trainingData[l] || []).length >= 10);
 
     if (loadingData) return <MLLoader message="Loading project data…" />;
 
@@ -1191,9 +1292,9 @@ const AudioTrainingPage = ({project, onBack, onUseInBlocks, onUpdateProject, onN
                 <span className={styles.webcamLabel}>Select Microphones:</span>
                 <select className={styles.webcamSelect} value={selectedMic} onChange={e => setSelMic(e.target.value)}>
                     {mics.length === 0 && <option value="">No microphones found</option>}
-                    {mics.map(m => (
-                        <option key={m.deviceId} value={m.deviceId}>
-                            {m.label || `Microphone (${m.deviceId.slice(0, 8)})`}
+                    {mics.map((m, idx) => (
+                        <option key={m.deviceId || idx} value={m.deviceId}>
+                            {m.label || `Microphone ${idx + 1}`}
                         </option>
                     ))}
                 </select>
@@ -1219,7 +1320,8 @@ const AudioTrainingPage = ({project, onBack, onUseInBlocks, onUpdateProject, onN
                             projectId={project.id}
                             selectedMicId={selectedMic}
                             isEngineReady={engineReady}
-                            canDelete={labels.length > 2}
+                            isBgNoise={lbl === BACKGROUND_NOISE_LABEL}
+                            canDelete={lbl !== BACKGROUND_NOISE_LABEL && labels.filter(l => l !== BACKGROUND_NOISE_LABEL).length > 2}
                             isDisabled={disabledLabels.includes(lbl)}
                             menuOpen={openMenuLabel === lbl}
                             onOpenMenu={() => setOpenMenuLabel(lbl)}
@@ -1263,6 +1365,11 @@ const AudioTrainingPage = ({project, onBack, onUseInBlocks, onUpdateProject, onN
                                 <div className={styles.progressTrack}>
                                     <div className={styles.progressFill} style={{width: `${trainPct}%`}}/>
                                 </div>
+                            )}
+                            {!isTraining && !canTrain && engineReady && userActiveLabels.length >= 2 && (
+                                <p className={styles.trainHintText}>
+                                    Add at least 10 audio samples to each class to train your model.
+                                </p>
                             )}
                             {isTrained ? (
                                 <button className={styles.trainAgainBtn} onClick={trainModel}
@@ -1327,6 +1434,7 @@ const AudioTrainingPage = ({project, onBack, onUseInBlocks, onUpdateProject, onN
                         </div>
                         <div className={styles.testingBody}>
                             <AudioTestingPanel
+                                ref={testPanelRef}
                                 isTrained={isTrained}
                                 labels={labels}
                                 labelColorMap={Object.fromEntries(
