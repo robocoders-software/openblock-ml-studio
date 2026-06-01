@@ -750,6 +750,8 @@ const MLTrainingPage = ({project, onBack, onUseInBlocks, onUpdateProject, onNewP
     const [renamingProject,  setRenamingProject]  = useState(false);
     const [renameValue,      setRenameValue]      = useState(project.name);
     const fileMenuRef = useRef(null);
+    const mountedRef = useRef(true);
+    useEffect(() => () => { mountedRef.current = false; }, []);
 
     useEffect(() => {
         if (!fileMenuOpen) return;
@@ -803,7 +805,7 @@ const MLTrainingPage = ({project, onBack, onUseInBlocks, onUpdateProject, onNewP
         // Stops the stream immediately — only needed to populate label strings.
         // On Windows this resolves without any dialog (auto-granted by OS).
         navigator.mediaDevices.getUserMedia({video: true, audio: false})
-            .then(stream => { stream.getTracks().forEach(t => t.stop()); enumerate(); })
+            .then(stream => { stream.getTracks().forEach(t => t.stop()); if (mountedRef.current) enumerate(); })
             .catch(() => {});
         navigator.mediaDevices.addEventListener('devicechange', enumerate);
         return () => navigator.mediaDevices.removeEventListener('devicechange', enumerate);
@@ -841,7 +843,7 @@ const MLTrainingPage = ({project, onBack, onUseInBlocks, onUpdateProject, onNewP
                     const restored = await loadImageClassifier(project.id, project.labels || ['Class 1', 'Class 2']);
                     if (restored && !signal.cancelled) {
                         classifierRef.current = restored;
-                        getMobileNet(s => setStatus(s)).then(net => {
+                        getMobileNet(s => { if (!signal.cancelled) setStatus(s); }).then(net => {
                             if (!signal.cancelled) mobileNetRef.current = net;
                         }).catch(() => {});
                         trained = true;
@@ -1033,12 +1035,13 @@ const MLTrainingPage = ({project, onBack, onUseInBlocks, onUpdateProject, onNewP
 
             // Run evaluation for report (non-blocking)
             evaluateImageModel(activeLabels, trainingData, project.id, classifier, net,
-                pct => setStatus(`Evaluating… ${pct}%`)
+                pct => { if (mountedRef.current) setStatus(`Evaluating… ${pct}%`); }
             ).then(result => {
+                if (!mountedRef.current) return;
                 setReportData(result);
                 setSavedReport({epochMetrics: collectedMetrics, reportData: result, labels: activeLabels});
                 setStatus('Training Complete');
-            }).catch(() => setStatus('Training Complete'));
+            }).catch(() => { if (mountedRef.current) setStatus('Training Complete'); });
 
         } catch (err) {
             setStatus(`Error: ${err.message}`);
@@ -1092,7 +1095,7 @@ const MLTrainingPage = ({project, onBack, onUseInBlocks, onUpdateProject, onNewP
             console.error('[MLPage] save failed:', e);
             setSaveStatus('error');
         } finally {
-            setTimeout(() => setSaveStatus('idle'), 2000);
+            setTimeout(() => { if (mountedRef.current) setSaveStatus('idle'); }, 2000);
         }
     }, [project, labels, disabledLabels, trainingData]);
 

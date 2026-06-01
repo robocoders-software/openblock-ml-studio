@@ -822,6 +822,10 @@ const AudioTrainingPage = ({project, onBack, onUseInBlocks, onUpdateProject, onN
     const [engineStatus,  setEngStatus] = useState('Initializing audio engine…');
     const [isTrained,     setTrained]  = useState(!!project.trained);
     const [isTraining,    setTraining] = useState(false);
+    // Tracks whether training completed in the current session.  loadFromDisk
+    // runs async (loadProjectAudioFromFS is slow) and can finish AFTER trainModel
+    // calls setTrained(true), overwriting it with false.  This ref prevents that.
+    const trainedInSessionRef = useRef(!!project.trained);
     const [trainPct,      setTrainPct] = useState(0);
     const [trainStatus,   setStatus]  = useState('');
     const [accPoints,     setAccPts]  = useState([]);
@@ -854,7 +858,10 @@ const AudioTrainingPage = ({project, onBack, onUseInBlocks, onUpdateProject, onN
     const trainCardRef   = useRef(null);
     const testCardRef    = useRef(null);
     const testPanelRef   = useRef(null);
+    const labelsRef      = useRef(labels);
     const [svgPaths,     setSvgPaths] = useState([]);
+
+    useEffect(() => { labelsRef.current = labels; }, [labels]);
 
     /* Enumerate microphones; re-runs on hot-plug/unplug and after permission is granted */
     useEffect(() => {
@@ -915,11 +922,15 @@ const AudioTrainingPage = ({project, onBack, onUseInBlocks, onUpdateProject, onN
                 }
                 if (!signal.cancelled) setData(fromOb.trainingData || {});
                 trained = !!(fromOb.modelRestored && !signal.cancelled);
-                setTrained(trained);
+                // Don't overwrite isTrained=true set by trainModel that completed
+                // while loadProjectAudioFromFS was still awaiting (race condition).
+                if (trained || !trainedInSessionRef.current) {
+                    setTrained(trained);
+                }
             } else {
                 const enriched = await loadProjectAudio(project.id, project.trainingData || {});
                 if (!signal.cancelled) setData(enriched);
-                if (project.trained) {
+                if (project.trained || trainedInSessionRef.current) {
                     const loaded = await loadSoundClassifier(project.id, project.labels || labels);
                     trained = !!(loaded && !signal.cancelled);
                     if (trained) setTrained(true);
@@ -1068,6 +1079,7 @@ const AudioTrainingPage = ({project, onBack, onUseInBlocks, onUpdateProject, onN
                     }
                 }
             );
+            trainedInSessionRef.current = true;
             setTrained(true);
             setTrainPct(100);
             /* Cache ML data so the next normal blocks save includes the trained model */
@@ -1160,8 +1172,12 @@ const AudioTrainingPage = ({project, onBack, onUseInBlocks, onUpdateProject, onN
             const x2 = trainRect.left - wrapRect.left;
             const y2 = trainRect.top + trainRect.height / 2 - wrapRect.top;
             const cx = Math.max(40, (x2 - x1) / 2);
+            const lbl = labelsRef.current[i];
+            const color = lbl === BACKGROUND_NOISE_LABEL
+                ? BG_NOISE_COLOR
+                : CLASS_COLORS[i % CLASS_COLORS.length];
             paths.push({
-                color: CLASS_COLORS[i % CLASS_COLORS.length],
+                color,
                 d: `M ${x1} ${y1} C ${x1 + cx} ${y1} ${x2 - cx} ${y2} ${x2} ${y2}`
             });
         });
