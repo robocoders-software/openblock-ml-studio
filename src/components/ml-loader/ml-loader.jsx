@@ -11,6 +11,12 @@ const MLLoader = ({message = 'Loading…'}) => (
             </div>
             <p className={styles.appName}>Machine Learning Environment</p>
             {message && <p className={styles.message}>{message}</p>}
+            <p className={styles.tagline}>
+                {'Code • Build • Innovate'}
+                <br />
+                {'with '}
+                <span className={styles.taglineBrand}>{'RoboCoders Studio'}</span>
+            </p>
         </div>
     </div>
 );

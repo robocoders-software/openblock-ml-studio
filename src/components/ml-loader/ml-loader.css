@@ -72,3 +72,22 @@
     font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
     text-align: center;
 }
+
+/* Brand tagline shown under the loading message */
+.tagline {
+    margin: 6px 0 0;
+    padding-top: 12px;
+    border-top: 1px solid #EAF2FC;
+    font-size: 12px;
+    font-weight: 600;
+    line-height: 1.6;
+    color: #004AAD;
+    font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+    text-align: center;
+    letter-spacing: 0.2px;
+}
+
+.tagline-brand {
+    font-weight: 700;
+    color: #FF8C1A;
+}

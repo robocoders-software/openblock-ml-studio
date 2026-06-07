@@ -119,6 +119,7 @@ export const loadImageProject = async (projectId) => {
     if (classifier && net) {
         setActiveModel({
             projectId,
+            projectName:   meta.name || '',
             type:          meta.type || 'images',
             labels:        savedLabels,
             classifier,
@@ -314,6 +315,7 @@ export const loadTextProject = async (projectId) => {
             if (cls) {
                 setActiveModel({
                     projectId,
+                    projectName:    meta.name || '',
                     type:           'text',
                     labels:         savedLabels,
                     trainingStatus: 'ready',
