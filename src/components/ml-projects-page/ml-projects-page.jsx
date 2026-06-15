@@ -132,6 +132,7 @@ const MLProjectsPage = ({ projects = [], loading = false, onBack, onCreate, onOp
                         {fileMenuOpen && (
                             <div className={styles.navDropdown}>
                                 <button onClick={() => { setFileMenuOpen(false); onCreate && onCreate(); }}>New ML Project</button>
+                                <button onClick={() => { setFileMenuOpen(false); onImport && onImport(); }}>Import Model (.rcml)…</button>
                             </div>
                         )}
                     </div>
@@ -272,7 +273,7 @@ const MLProjectsPage = ({ projects = [], loading = false, onBack, onCreate, onOp
                                                         className={styles.dropdownAction}
                                                         onClick={e => handleExport(e, project)}
                                                     >
-                                                        Export
+                                                        Download Model (.rcml)
                                                     </button>
                                                     <button
                                                         className={styles.dropdownDanger}

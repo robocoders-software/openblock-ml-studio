@@ -1067,19 +1067,27 @@ const MLTrainingPage = ({project, onBack, onUseInBlocks, onUpdateProject, onNewP
         setRenamingProject(false);
         if (!trimmed || trimmed === project.name) return;
         onUpdateProject({...project, name: trimmed});
-        // Persist the new name to project.json immediately
+        // Persist the new name to project.json immediately — merge into the existing
+        // file so we never wipe trainingIndex/disabledLabels (which would lose samples).
         const ipc = (() => { try { return window.require('electron').ipcRenderer; } catch (_) { return null; } })();
         if (ipc) {
-            ipc.invoke('ml-write-file', project.id, 'project.json', JSON.stringify({
-                id:        project.id,
-                name:      trimmed,
-                type:      project.type,
-                labels:    labels || [],
-                trained:   isTrained,
-                createdAt: project.createdAt,
-                updatedAt: Date.now(),
-                savedAt:   project.savedAt || Date.now()
-            })).catch(() => {});
+            (async () => {
+                let current = {};
+                try {
+                    const raw = await ipc.invoke('ml-read-file', project.id, 'project.json');
+                    if (raw) {
+                        const txt = typeof raw === 'string' ? raw : Buffer.from(raw).toString('utf8');
+                        current = JSON.parse(txt) || {};
+                    }
+                } catch (_) { /* fall back to a minimal write */ }
+                const merged = {
+                    id: project.id, type: project.type, labels: labels || [],
+                    trained: isTrained, createdAt: project.createdAt,
+                    savedAt: project.savedAt || Date.now(),
+                    ...current, name: trimmed, updatedAt: Date.now()
+                };
+                ipc.invoke('ml-write-file', project.id, 'project.json', JSON.stringify(merged)).catch(() => {});
+            })();
         }
     }, [renameValue, project, labels, isTrained, onUpdateProject]);
 
@@ -1098,6 +1106,18 @@ const MLTrainingPage = ({project, onBack, onUseInBlocks, onUpdateProject, onNewP
             setTimeout(() => { if (mountedRef.current) setSaveStatus('idle'); }, 2000);
         }
     }, [project, labels, disabledLabels, trainingData]);
+
+    /* ── Download the trained model as a standalone .rcml file (share/import elsewhere) ── */
+    const handleDownloadModel = useCallback(async () => {
+        if (!isTrained) return;
+        try {
+            await saveImageProject(
+                project, labels, disabledLabels, trainingData, classifierRef.current, {showDialog: true}
+            );
+        } catch (e) {
+            console.error('[MLPage] download model failed:', e);
+        }
+    }, [project, labels, disabledLabels, trainingData, isTrained]);
 
     /* ── Deploy model to window.__openblockMLModel ── */
     const deployModel = () => {
@@ -1245,6 +1265,14 @@ const MLTrainingPage = ({project, onBack, onUseInBlocks, onUpdateProject, onNewP
                     onClick={handleSave}
                 >
                     {saveStatus === 'saving' ? '⏳' : saveStatus === 'saved' ? '✓' : saveStatus === 'error' ? '✗' : '💾'}
+                </button>
+                <button
+                    className={styles.saveBtn}
+                    title={isTrained ? 'Download Model (.rcml) — share or import on another device' : 'Train the model first to download it'}
+                    disabled={!isTrained}
+                    onClick={handleDownloadModel}
+                >
+                    {'⬇'}
                 </button>
                 <div className={styles.spacer}/>
                 <span className={styles.webcamLabel}>Select Webcam:</span>

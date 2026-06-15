@@ -96,42 +96,55 @@
     flex-shrink: 0;
     border-bottom: 1px solid #A8C8F0;
 }
-.subHeaderType  { font-size: 15px; font-weight: 700; color: #004AAD; }
+.subHeaderType  { font-size: 15px; font-weight: 700; color: #004AAD; line-height: 1; white-space: nowrap; flex-shrink: 0; }
 .infoIcon {
     display: flex; align-items: center; justify-content: center;
     cursor: help; flex-shrink: 0;
     opacity: 0.9; transition: opacity 0.15s, transform 0.15s;
 }
 .infoIcon:hover { opacity: 1; transform: scale(1.1); }
-.divider   { width: 1px; height: 30px; background: #A8C8F0; }
+.divider   { width: 1px; height: 30px; background: #A8C8F0; flex-shrink: 0; }
 .projectNamePill {
+    display: inline-flex; align-items: center;
     background: #004AAD; color: white;
-    border-radius: 8px; padding: 5px 14px;
-    font-size: 13px; font-weight: 600;
+    border-radius: 8px; padding: 0 14px; height: 30px;
+    font-size: 13px; font-weight: 600; line-height: 1;
     cursor: pointer;
     transition: background 0.15s;
+    max-width: 200px; white-space: nowrap;
+    overflow: hidden; text-overflow: ellipsis;
+    flex-shrink: 0;
 }
 .projectNamePill:hover { background: #003A8C; }
 
 .projectNameInput {
+    box-sizing: border-box;
+    height: 30px;
     background: white;
     color: #004AAD;
     border: 2px solid #004AAD;
     border-radius: 8px;
-    padding: 4px 10px;
+    padding: 0 10px;
     font-size: 13px;
     font-weight: 600;
+    line-height: 1;
     outline: none;
     min-width: 80px;
     max-width: 220px;
     font-family: inherit;
+    flex-shrink: 0;
 }
 .saveBtn {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 34px; height: 30px;
     background: none; border: none; cursor: pointer;
-    color: #004AAD; font-size: 20px; padding: 4px 6px;
+    color: #004AAD; font-size: 18px; line-height: 1; padding: 0;
     border-radius: 6px; transition: background 0.15s;
+    flex-shrink: 0;
 }
 .saveBtn:hover { background: #CCE0FF; }
+.saveBtn:disabled { opacity: 0.4; cursor: not-allowed; }
+.saveBtn:disabled:hover { background: none; }
 .spacer { flex: 1; }
 .webcamLabel { font-size: 12px; color: #555; font-weight: 600; white-space: nowrap; }
 .webcamSelect {

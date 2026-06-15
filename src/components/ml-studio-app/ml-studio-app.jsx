@@ -6,6 +6,7 @@ import MLTrainingPage    from '../ml-training-page/ml-training-page.jsx';
 import MLLoader          from '../ml-loader/ml-loader.jsx';
 import {deleteProjectData} from '../../lib/ml-engine.js';
 import {saveTextProject, saveImageProject, saveAudioProject} from '../../lib/project-persistence.js';
+import showAppDialog from '../../lib/app-dialog-service.js';
 
 class TrainingErrorBoundary extends React.Component {
     constructor (props) {
@@ -84,13 +85,26 @@ const MLStudioApp = ({onEnterBlocks, onBack}) => {
     useEffect(() => {
         const ipc = getIpc();
         if (!ipc) { setLoading(false); return; }
-        ipc.invoke('ml-list-projects').then(list => {
-            setProjects(Array.isArray(list) ? list : []);
-        }).catch(err => {
-            console.error('[MLStudio] ml-list-projects failed:', err);
-        }).finally(() => {
+        const scan = () => ipc.invoke('ml-list-projects')
+            .then(list => (Array.isArray(list) ? list : []))
+            .catch(() => []);
+        (async () => {
+            let list = await scan();
+            // Safety net: if an ML model is active in the blocks editor (e.g. a project
+            // opened from a .rc) but its folder isn't on disk yet — because the blocks-side
+            // extraction was skipped or mistimed — extract it now so the project always
+            // appears here. ml-get-loaded-data extracts the bundled ml/ from the open .rc;
+            // if it's already on disk it's a no-op.
+            try {
+                const active = (typeof window !== 'undefined' && window.__openblockMLModel) || null;
+                if (active && active.projectId && !list.some(p => p.id === active.projectId)) {
+                    await ipc.invoke('ml-get-loaded-data', active.projectId).catch(() => {});
+                    list = await scan();
+                }
+            } catch (_) { /* ignore — list still shows whatever scanned */ }
+            setProjects(list);
             setLoading(false);
-        });
+        })();
     }, []);
 
     /* ── Refresh project list from disk (called after save/delete) ── */
@@ -146,8 +160,22 @@ const MLStudioApp = ({onEnterBlocks, onBack}) => {
         setTimeout(refreshProjects, 500);
     }, [refreshProjects, projects]);
 
-    const deleteProject = useCallback(projectOrId => {
-        const id = typeof projectOrId === 'string' ? projectOrId : projectOrId.id;
+    const deleteProject = useCallback(async projectOrId => {
+        const id   = typeof projectOrId === 'string' ? projectOrId : projectOrId.id;
+        const name = (typeof projectOrId === 'object' && projectOrId && projectOrId.name) || 'this project';
+        /* Confirm before destroying the project — deletion is permanent and removes the
+           trained model + all training data. */
+        const idx = await showAppDialog({
+            type:    'warning',
+            title:   'Delete ML Project',
+            message: `Delete "${name}"?`,
+            detail:  'This permanently removes the project, its trained model, and all of its ' +
+                'training data. This cannot be undone.',
+            buttons: ['Delete', 'Cancel'],
+            defaultId: 1
+        });
+        if (idx !== 0) return; // Cancel — do nothing
+
         deleteProjectData(id).catch(() => {});
         const ipc = getIpc();
         if (ipc) ipc.invoke('ml-delete-project', id).catch(() => {});
@@ -166,6 +194,27 @@ const MLStudioApp = ({onEnterBlocks, onBack}) => {
         setTimeout(refreshProjects, 300);
     }, [refreshProjects]);
 
+    /* Read-modify-write a project's project.json on disk, merging only the given
+       fields. Critical: rewriting the whole object from the lightweight list-view
+       `project` (which has no trainingIndex/disabledLabels) would WIPE the sample
+       index and make recorded samples disappear on reload. So we always merge into
+       whatever is currently on disk. */
+    const patchProjectMeta = useCallback(async (projectId, patch) => {
+        const ipc = getIpc();
+        if (!ipc) return;
+        let current = {};
+        try {
+            const raw = await ipc.invoke('ml-read-file', projectId, 'project.json');
+            if (raw) {
+                const text = typeof raw === 'string' ? raw : Buffer.from(raw).toString('utf8');
+                current = JSON.parse(text) || {};
+            }
+        } catch (_) { /* fall back to writing just the patch */ }
+        const merged = {...current, ...patch, id: projectId, updatedAt: Date.now()};
+        await ipc.invoke('ml-write-file', projectId, 'project.json', JSON.stringify(merged))
+            .catch(() => {});
+    }, []);
+
     const renameProject = useCallback((project, newName) => {
         const trimmed = newName.trim();
         if (!trimmed || trimmed === project.name) return;
@@ -174,49 +223,19 @@ const MLStudioApp = ({onEnterBlocks, onBack}) => {
             p => p.id !== project.id && p.name.toLowerCase() === trimmed.toLowerCase()
         );
         if (isDuplicate) return;
-        const updatedAt = Date.now();
         setProjects(prev => prev.map(p =>
-            p.id === project.id ? {...p, name: trimmed, updatedAt} : p
+            p.id === project.id ? {...p, name: trimmed, updatedAt: Date.now()} : p
         ));
-        const ipc = getIpc();
-        if (ipc) {
-            const saveData = JSON.stringify({
-                id:          project.id,
-                name:        trimmed,
-                description: project.description || '',
-                type:        project.type,
-                labels:      project.labels || [],
-                trained:     project.trained || false,
-                createdAt:   project.createdAt,
-                updatedAt,
-                savedAt:     project.savedAt || project.updatedAt || updatedAt
-            });
-            ipc.invoke('ml-write-file', project.id, 'project.json', saveData).catch(() => {});
-        }
-    }, [projects]);
+        patchProjectMeta(project.id, {name: trimmed});
+    }, [projects, patchProjectMeta]);
 
     const updateProjectDescription = useCallback((project, newDesc) => {
         const trimmed = newDesc.trim();
-        const updatedAt = Date.now();
         setProjects(prev => prev.map(p =>
-            p.id === project.id ? {...p, description: trimmed, updatedAt} : p
+            p.id === project.id ? {...p, description: trimmed, updatedAt: Date.now()} : p
         ));
-        const ipc = getIpc();
-        if (ipc) {
-            const saveData = JSON.stringify({
-                id:          project.id,
-                name:        project.name,
-                description: trimmed,
-                type:        project.type,
-                labels:      project.labels || [],
-                trained:     project.trained || false,
-                createdAt:   project.createdAt,
-                updatedAt,
-                savedAt:     project.savedAt || project.updatedAt || updatedAt
-            });
-            ipc.invoke('ml-write-file', project.id, 'project.json', saveData).catch(() => {});
-        }
-    }, []);
+        patchProjectMeta(project.id, {description: trimmed});
+    }, [patchProjectMeta]);
 
     const updateProject = useCallback(updated => {
         setActive(updated);
@@ -240,15 +259,37 @@ const MLStudioApp = ({onEnterBlocks, onBack}) => {
         refreshProjects();
     }, [refreshProjects]);
 
-    /* ── Import .ob file ── */
+    /* ── Import a .rcml model file ── */
     const importProject = useCallback(() => {
         const ipc = getIpc();
         if (!ipc) return;
-        /* Use Electron's file dialog to pick an .ob file */
+        /* Use Electron's file dialog to pick a .rcml file */
         ipc.invoke('ml-open-ob-file').then(result => {
-            if (!result || result.canceled || !result.projectId) return;
-            /* The main process extracted the .ob and we have the projectId */
-            refreshProjects();
+            if (!result || result.canceled) return;
+            if (result.error) {
+                // eslint-disable-next-line no-alert
+                alert(`Could not import model: ${result.error}`);
+                return;
+            }
+            if (!result.projectId) {
+                // eslint-disable-next-line no-alert
+                alert('Could not import model: no ML model found in the selected file.');
+                return;
+            }
+            /* The main process extracted the model to ml-projects/<projectId>/.
+               Re-scan the list, then open the imported project so the user gets
+               clear feedback (especially when re-importing an id that already exists). */
+            ipc.invoke('ml-list-projects').then(list => {
+                const arr = Array.isArray(list) ? list : [];
+                setProjects(arr);
+                const imported = arr.find(p => p.id === result.projectId);
+                if (imported) {
+                    handleOpenProject(imported);
+                } else {
+                    // eslint-disable-next-line no-alert
+                    alert(`Imported "${result.name || 'model'}". It is now in your project list.`);
+                }
+            }).catch(() => refreshProjects());
         }).catch(() => {
             /* Fallback: just open a file input for JSON import */
             const input = document.createElement('input');
@@ -281,6 +322,20 @@ const MLStudioApp = ({onEnterBlocks, onBack}) => {
             input.click();
         });
     }, [refreshProjects]);
+
+    /* ── Download a project's model as a standalone .rcml ── */
+    const exportProject = useCallback(project => {
+        const ipc = getIpc();
+        if (!ipc || !project) return;
+        if (!project.trained) {
+            // eslint-disable-next-line no-alert
+            alert('This model has not been trained yet. Train it before downloading.');
+            return;
+        }
+        ipc.invoke('ml-save-ob-file', project.id, project.name).catch(err => {
+            console.error('[MLStudio] Download model failed:', err);
+        });
+    }, []);
 
     /* Show branded loader during initial project list fetch */
     if (loading) return <MLLoader message={loadingMsg} />;
@@ -323,6 +378,7 @@ const MLStudioApp = ({onEnterBlocks, onBack}) => {
                 onRename={renameProject}
                 onUpdateDescription={updateProjectDescription}
                 onImport={importProject}
+                onExport={exportProject}
             />
             {showCreateModal && (
                 <CreateProjectModal

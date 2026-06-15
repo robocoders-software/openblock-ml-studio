@@ -33,6 +33,19 @@ let _activeModel = null;
 export const setActiveModel = model => {
     _activeModel = model;
     if (typeof window !== 'undefined') window.__openblockMLModel = model;
+    // Keep the main process in sync so SAVING the blocks project always bundles the
+    // currently-active ML model into the .rc — even if the user never clicked
+    // "Use in Blocks" this session. Without this, main's _pendingMLProjectId can be
+    // stale/null and the saved .rc ends up WITHOUT the model, so reopening the
+    // project loads the blocks but the ML category/model is gone.
+    try {
+        const ipc = window.require('electron').ipcRenderer;
+        if (model && model.projectId) {
+            ipc.send('ml-set-pending-project', model.projectId);
+        } else {
+            ipc.send('ml-clear-pending-project', null);
+        }
+    } catch (_) { /* not running in Electron — ignore */ }
 };
 export const getActiveModel = () => _activeModel;
 

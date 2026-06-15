@@ -108,10 +108,14 @@
 .spacer   { flex: 1; }
 
 .projectNamePill {
+    display: inline-flex;
+    align-items: center;
     background: #004AAD;
     color: white;
     border-radius: 14px;
-    padding: 3px 14px;
+    padding: 0 14px;
+    height: 28px;
+    line-height: 1;
     font-size: 13px;
     font-weight: 600;
     max-width: 220px;
@@ -120,6 +124,7 @@
     white-space: nowrap;
     cursor: pointer;
     transition: background 0.15s;
+    flex-shrink: 0;
 }
 .projectNamePill:hover { background: #003A8C; }
 

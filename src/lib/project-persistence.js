@@ -28,6 +28,26 @@ const getIpc = () => {
     try { return window.require('electron').ipcRenderer; } catch (_) { return null; }
 };
 
+/* ── Label safety net ──────────────────────────────────────────────
+   A defect somewhere in the rename/refresh path can leave a label as the same
+   unit string repeated many times (e.g. "PositivePositivePositive…"). Collapse any
+   label that is a unit repeated ≥3 times back to the unit, so corruption can never be
+   persisted or shown. ≥3 repetitions of a multi-char unit is virtually never a real
+   class name, so this is safe (a deliberate "byebye" — 2× — is left untouched). */
+const collapseRepeats = s => {
+    if (typeof s !== 'string' || s.length < 3) return s;
+    for (let p = 1; p <= Math.floor(s.length / 3); p++) {
+        if (s.length % p !== 0) continue;
+        const unit  = s.slice(0, p);
+        const times = s.length / p;
+        if (times >= 3 && unit.repeat(times) === s) return unit;
+    }
+    return s;
+};
+const sanitizeLabels = labels => (Array.isArray(labels) ? labels.map(collapseRepeats) : labels);
+
+export {collapseRepeats, sanitizeLabels};
+
 /* ═══════════════════════════════════════════════════════════════
    IMAGE CLASSIFIER
 ═══════════════════════════════════════════════════════════════ */
@@ -54,7 +74,7 @@ export const saveImageProject = async (project, labels, disabledLabels, training
             id:            project.id,
             name:          project.name,
             type:          project.type || 'images',
-            labels,
+            labels: sanitizeLabels(labels),
             disabledLabels,
             trainingIndex,
             trained:       !!classifier,
@@ -162,7 +182,7 @@ export const saveAudioProject = async (project, labels, disabledLabels, training
             id:            project.id,
             name:          project.name,
             type:          'sounds',
-            labels,
+            labels: sanitizeLabels(labels),
             disabledLabels,
             trainingIndex,
             trained:       isTrained,
@@ -263,7 +283,7 @@ export const saveTextProject = async (project, labels, trainingData, isTrained, 
             id:           project.id,
             name:         project.name,
             type:         'text',
-            labels,
+            labels: sanitizeLabels(labels),
             trainingIndex,
             trained:      isTrained,
             createdAt:    project.createdAt || now,

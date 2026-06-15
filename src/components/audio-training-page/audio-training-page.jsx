@@ -313,28 +313,39 @@ const AudioClassCard = React.forwardRef(({
             200
         );
 
-        /* MediaRecorder — capture raw audio alongside the spectrogram */
+        /* MediaRecorder — capture raw audio alongside the spectrogram.
+           Prefer the live mic stream the recognizer is using; fall back to the
+           visualiser stream. Using an inactive/absent stream is why some samples
+           used to end up with no playback blob. */
         const chunks = [];
         let mr = null;
-        if (vizStreamRef.current) {
+        const captureStream = (vizStreamRef.current && vizStreamRef.current.active)
+            ? vizStreamRef.current
+            : null;
+        if (captureStream) {
             try {
-                mr = new MediaRecorder(vizStreamRef.current);
+                mr = new MediaRecorder(captureStream);
                 mr.ondataavailable = e => { if (e.data && e.data.size > 0) chunks.push(e.data); };
-                mr.start();
+                /* timeslice flushes data periodically so even short clips yield chunks */
+                mr.start(250);
                 mediaRecorderRef.current = mr;
-            } catch (_) { mr = null; }
+            } catch (err) { console.warn('[AudioCard] MediaRecorder unavailable:', err); mr = null; }
+        } else {
+            console.warn('[AudioCard] No active mic stream for blob capture — sample will not be replayable.');
         }
 
         try {
             const specData = await collectAudioExample(label);
 
-            /* Stop MediaRecorder and collect blob */
+            /* Stop MediaRecorder and collect blob. requestData() forces a final
+               dataavailable so the buffered audio is never lost. */
             let mediaBlob = null;
             if (mr && mr.state !== 'inactive') {
                 mediaBlob = await new Promise(resolve => {
                     mr.addEventListener('stop', () => {
-                        resolve(chunks.length ? new Blob(chunks, {type: mr.mimeType}) : null);
+                        resolve(chunks.length ? new Blob(chunks, {type: mr.mimeType || 'audio/webm'}) : null);
                     }, {once: true});
+                    try { mr.requestData(); } catch (_) { /* not all impls support it */ }
                     mr.stop();
                 });
             }
@@ -344,7 +355,11 @@ const AudioClassCard = React.forwardRef(({
             const id = generateId();
             await saveAudioToIDB(projectId, id, Array.from(specData.data), specData.frameSize);
             if (thumbUrl) await saveAudioThumbToIDB(projectId, id, thumbUrl);
-            if (mediaBlob) await saveAudioBlobToIDB(projectId, id, mediaBlob);
+            if (mediaBlob && mediaBlob.size > 0) {
+                await saveAudioBlobToIDB(projectId, id, mediaBlob);
+            } else {
+                console.warn(`[AudioCard] No audio blob captured for sample ${id} — playback will be unavailable.`);
+            }
             onRecorded(label, {
                 id,
                 type: 'audio',
@@ -1110,12 +1125,25 @@ const AudioTrainingPage = ({project, onBack, onUseInBlocks, onUpdateProject, onN
         onUpdateProject({...project, name: trimmed});
         const ipc = (() => { try { return window.require('electron').ipcRenderer; } catch (_) { return null; } })();
         if (ipc) {
-            ipc.invoke('ml-write-file', project.id, 'project.json', JSON.stringify({
-                id: project.id, name: trimmed, type: project.type,
-                labels: project.labels || [], trained: project.trained || false,
-                createdAt: project.createdAt, updatedAt: Date.now(),
-                savedAt: project.savedAt || Date.now()
-            })).catch(() => {});
+            /* Merge name into the on-disk project.json — never overwrite the whole
+               object, or we'd wipe trainingIndex/disabledLabels and lose samples. */
+            (async () => {
+                let current = {};
+                try {
+                    const raw = await ipc.invoke('ml-read-file', project.id, 'project.json');
+                    if (raw) {
+                        const txt = typeof raw === 'string' ? raw : Buffer.from(raw).toString('utf8');
+                        current = JSON.parse(txt) || {};
+                    }
+                } catch (_) { /* fall back to a minimal write */ }
+                const merged = {
+                    id: project.id, type: project.type, labels: project.labels || [],
+                    trained: project.trained || false, createdAt: project.createdAt,
+                    savedAt: project.savedAt || Date.now(),
+                    ...current, name: trimmed, updatedAt: Date.now()
+                };
+                ipc.invoke('ml-write-file', project.id, 'project.json', JSON.stringify(merged)).catch(() => {});
+            })();
         }
     }, [renameValue, project, onUpdateProject]);
 
@@ -1133,6 +1161,16 @@ const AudioTrainingPage = ({project, onBack, onUseInBlocks, onUpdateProject, onN
             setSaveStatus('error');
         } finally {
             setTimeout(() => setSaveStatus('idle'), 2000);
+        }
+    }, [project, labels, disabledLabels, trainingData, isTrained]);
+
+    /* ── Download the trained model as a standalone .rcml file ── */
+    const handleDownloadModel = useCallback(async () => {
+        if (!isTrained) return;
+        try {
+            await saveAudioProject(project, labels, disabledLabels, trainingData, isTrained, {showDialog: true});
+        } catch (err) {
+            console.error('[AudioPage] download model failed:', err);
         }
     }, [project, labels, disabledLabels, trainingData, isTrained]);
 
@@ -1303,6 +1341,14 @@ const AudioTrainingPage = ({project, onBack, onUseInBlocks, onUpdateProject, onN
                     onClick={handleSaveProject}
                 >
                     {saveStatus === 'saving' ? '⏳' : saveStatus === 'saved' ? '✓' : saveStatus === 'error' ? '✗' : '💾'}
+                </button>
+                <button
+                    className={styles.saveBtn}
+                    title={isTrained ? 'Download Model (.rcml) — share or import on another device' : 'Train the model first to download it'}
+                    disabled={!isTrained}
+                    onClick={handleDownloadModel}
+                >
+                    {'⬇'}
                 </button>
                 <div className={styles.spacer}/>
                 <span className={styles.webcamLabel}>Select Microphones:</span>

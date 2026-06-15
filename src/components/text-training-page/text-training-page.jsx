@@ -606,12 +606,25 @@ const TextTrainingPage = ({
         onUpdateProject({...project, name: trimmed});
         const ipc = (() => { try { return window.require('electron').ipcRenderer; } catch (_) { return null; } })();
         if (ipc) {
-            ipc.invoke('ml-write-file', project.id, 'project.json', JSON.stringify({
-                id: project.id, name: trimmed, type: project.type,
-                labels: labels || [], trained: isTrained,
-                createdAt: project.createdAt, updatedAt: Date.now(),
-                savedAt: project.savedAt || Date.now()
-            })).catch(() => {});
+            /* Merge into the existing project.json so trainingIndex (which holds the
+               text samples) is never wiped by a rename. */
+            (async () => {
+                let current = {};
+                try {
+                    const raw = await ipc.invoke('ml-read-file', project.id, 'project.json');
+                    if (raw) {
+                        const txt = typeof raw === 'string' ? raw : Buffer.from(raw).toString('utf8');
+                        current = JSON.parse(txt) || {};
+                    }
+                } catch (_) { /* fall back to a minimal write */ }
+                const merged = {
+                    id: project.id, type: project.type, labels: labels || [],
+                    trained: isTrained, createdAt: project.createdAt,
+                    savedAt: project.savedAt || Date.now(),
+                    ...current, name: trimmed, updatedAt: Date.now()
+                };
+                ipc.invoke('ml-write-file', project.id, 'project.json', JSON.stringify(merged)).catch(() => {});
+            })();
         }
     }, [renameValue, project, labels, isTrained, onUpdateProject]);
 
@@ -627,6 +640,16 @@ const TextTrainingPage = ({
             setSaveStatus('error');
         } finally {
             setTimeout(() => setSaveStatus('idle'), 2000);
+        }
+    }, [project, labels, trainingData, isTrained]);
+
+    /* ── Download the trained model as a standalone .rcml file ── */
+    const handleDownloadModel = useCallback(async () => {
+        if (!isTrained) return;
+        try {
+            await saveTextProject(project, labels, trainingData, isTrained, {showDialog: true});
+        } catch (err) {
+            console.error('[TextPage] download model failed:', err);
         }
     }, [project, labels, trainingData, isTrained]);
 
@@ -862,6 +885,14 @@ const TextTrainingPage = ({
                     onClick={handleSave}
                 >
                     {saveStatus === 'saving' ? '⏳' : saveStatus === 'saved' ? '✓' : saveStatus === 'error' ? '✗' : '💾'}
+                </button>
+                <button
+                    className={styles.saveBtn}
+                    title={isTrained ? 'Download Model (.rcml) — share or import on another device' : 'Train the model first to download it'}
+                    disabled={!isTrained}
+                    onClick={handleDownloadModel}
+                >
+                    {'⬇'}
                 </button>
 
                 <div className={styles.spacer}/>
