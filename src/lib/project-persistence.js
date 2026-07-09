@@ -315,10 +315,14 @@ export const loadTextProject = async (projectId) => {
 
     const savedLabels = meta.labels;
 
-    /* Rebuild trainingData — text samples are stored inline in trainingIndex */
+    /* Rebuild trainingData — text samples are stored inline in trainingIndex.
+       Collapse each key through collapseRepeats so samples saved under a corrupted
+       "PositivePositive…" key re-attach to the clean "Positive" label (which savedLabels
+       already is) instead of being orphaned under a name no card renders. */
     const trainingData = {};
     for (const label of savedLabels) trainingData[label] = [];
-    for (const [label, items] of Object.entries(meta.trainingIndex || {})) {
+    for (const [rawLabel, items] of Object.entries(meta.trainingIndex || {})) {
+        const label = collapseRepeats(rawLabel);
         if (!trainingData[label]) trainingData[label] = [];
         for (const item of (Array.isArray(items) ? items : [])) {
             if (item && item.text !== undefined) {

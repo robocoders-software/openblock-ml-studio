@@ -9,9 +9,10 @@ import {
     trainText,
     classifyText,
     loadTextClassifier,
-    setActiveModel
+    setActiveModel,
+    getActiveModel
 } from '../../lib/ml-engine.js';
-import {saveTextProject, loadTextProject} from '../../lib/project-persistence.js';
+import {saveTextProject, loadTextProject, sanitizeLabels} from '../../lib/project-persistence.js';
 
 const CLASS_COLORS = ['#E05C3D', '#2EAA7E', '#004AAD', '#003A8C', '#F39C12', '#E91E63', '#1ABC9C', '#E67E22'];
 const generateId   = () => Math.random().toString(36).slice(2, 10);
@@ -284,11 +285,14 @@ const TextTestingPanel = ({isTrained, labels, labelColorMap}) => {
         setError('');
         try {
             const res = await classifyText(text);
-            /* Winner-takes-all: top class = 100%, rest = 0%.
-               Always keep original label order so bars never jump. */
-            const arr = labels.map(lbl => ({
+            /* Show the REAL confidence for each class (res.confidences), not a hardcoded
+               100/0 winner-takes-all — otherwise the testing panel disagrees with the
+               `recognise text (confidence)` block, which reads the same res.confidences.
+               Index-based mapping matches the block path (labels[i] → confidences[i]).
+               Keep original label order so the bars never jump around. */
+            const arr = labels.map((lbl, i) => ({
                 label: lbl,
-                prob:  res.label === lbl ? 100 : 0,
+                prob:  Math.round((res.confidences[String(i)] || 0) * 100),
                 isTop: res.label === lbl
             }));
             setResults(arr);
@@ -373,7 +377,7 @@ const TextTrainingPage = ({
     project, onBack, onUseInBlocks, onUpdateProject,
     onNewProject, onNewMLProject, onOpenMLProject
 }) => {
-    const [labels,        setLabels]    = useState(project.labels || ['Class 1', 'Class 2']);
+    const [labels,        setLabels]    = useState(sanitizeLabels(project.labels) || ['Class 1', 'Class 2']);
     const [trainingData,  setData]      = useState({});
     const [loadingData,   setLoading]   = useState(true);
     const [isTrained,     setTrained]   = useState(!!project.trained);
@@ -420,8 +424,9 @@ const TextTrainingPage = ({
             if (fromOb && !signal.cancelled) {
                 if (fromOb.name) onUpdateProject({...project, name: fromOb.name});
                 if (fromOb.labels && fromOb.labels.length >= 2) {
-                    setLabels(fromOb.labels);
-                    finalLabels = fromOb.labels;
+                    const clean = sanitizeLabels(fromOb.labels);
+                    setLabels(clean);
+                    finalLabels = clean;
                 }
                 if (!signal.cancelled) {
                     /* Merge loaded data with any samples the user typed WHILE loading was in
@@ -510,6 +515,20 @@ const TextTrainingPage = ({
         saveTextProject(project, labels, trainingData, isTrained, {showDialog: false})
             .catch(err => console.error('[TextPage] auto-save failed:', err));
     }, [labels, trainingData, isTrained]); // eslint-disable-line react-hooks/exhaustive-deps
+
+    /* Keep the blocks palette in sync with LIVE class edits (rename / add / delete). The blocks
+       editor reads class names from window.__openblockMLModel.labels, which is set by
+       setActiveModel — but that was only called on load/train, so renames never reached the
+       palette until a reload or retrain. Update the active model's labels whenever they change.
+       sanitizeLabels() collapses any repeated-unit corruption so a bad name can never reach the
+       blocks (and the bridge stays the single, clean source the dropdown reads). */
+    useEffect(() => {
+        if (loadingData) return;
+        const active = getActiveModel();
+        if (active && active.projectId === project.id) {
+            setActiveModel({...active, labels: sanitizeLabels(labels)});
+        }
+    }, [labels]); // eslint-disable-line react-hooks/exhaustive-deps
 
     /* ── CRUD helpers ── */
     const addSample = useCallback((label, sample) => {

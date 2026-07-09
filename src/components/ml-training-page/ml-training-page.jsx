@@ -14,14 +14,15 @@ import {
     loadImageClassifier,
     predictImages,
     evaluateImageModel,
-    setActiveModel
+    setActiveModel,
+    getActiveModel
 } from '../../lib/ml-engine.js';
 import {
     saveImageToFS        as saveImageToIDB,
     getImageFromFS       as getImageFromIDB,
     loadProjectImagesFromFS as loadProjectImages
 } from '../../lib/ml-fs.js';
-import {saveImageProject, loadImageProject} from '../../lib/project-persistence.js';
+import {saveImageProject, loadImageProject, sanitizeLabels} from '../../lib/project-persistence.js';
 import TrainReportModal from './TrainReportModal.jsx';
 
 const CLASS_COLORS = ['#E05C3D', '#2EAA7E', '#004AAD', '#003A8C', '#F39C12', '#E91E63', '#1ABC9C', '#E67E22'];
@@ -722,7 +723,7 @@ const MLTrainingPage = ({project, onBack, onUseInBlocks, onUpdateProject, onNewP
             />
         );
     }
-    const [labels,         setLabels]      = useState(project.labels || ['Class 1', 'Class 2']);
+    const [labels,         setLabels]      = useState(sanitizeLabels(project.labels) || ['Class 1', 'Class 2']);
     const [trainingData,   setData]        = useState({});
     const [loadingData,    setLoadingData] = useState(true);
     const [isTrained,      setTrained]     = useState(!!project.trained);
@@ -823,8 +824,9 @@ const MLTrainingPage = ({project, onBack, onUseInBlocks, onUpdateProject, onNewP
             if (fromOb && !signal.cancelled) {
                 if (fromOb.name) onUpdateProject({...project, name: fromOb.name});
                 if (fromOb.labels && fromOb.labels.length >= 2) {
-                    setLabels(fromOb.labels);
-                    finalLabels = fromOb.labels;
+                    const clean = sanitizeLabels(fromOb.labels);
+                    setLabels(clean);
+                    finalLabels = clean;
                 }
                 const enriched = await loadProjectImages(project.id, fromOb.trainingData || {});
                 if (!signal.cancelled) setData(enriched);
@@ -901,6 +903,17 @@ const MLTrainingPage = ({project, onBack, onUseInBlocks, onUpdateProject, onNewP
         saveImageProject(project, labels, disabledLabels, trainingData, classifierRef.current, {showDialog: false})
             .catch(() => {});
     }, [labels, trainingData, isTrained]); // eslint-disable-line react-hooks/exhaustive-deps
+
+    /* Keep the blocks palette in sync with LIVE class renames/adds/deletes — see the text page
+       for the full rationale. Without this, label edits don't reach window.__openblockMLModel
+       until a reload/retrain. sanitizeLabels() also keeps any corruption out of the bridge. */
+    useEffect(() => {
+        if (loadingData) return;
+        const active = getActiveModel();
+        if (active && active.projectId === project.id) {
+            setActiveModel({...active, labels: sanitizeLabels(labels)});
+        }
+    }, [labels]); // eslint-disable-line react-hooks/exhaustive-deps
 
     /* ── Add images ── */
     const addImages = useCallback(async (label, dataUrls) => {

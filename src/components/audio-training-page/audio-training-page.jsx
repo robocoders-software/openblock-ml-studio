@@ -4,16 +4,19 @@ import styles from './audio-training-page.css';
 import showAppDialog from '../../lib/app-dialog-service.js';
 import openblockLogo from '../openblock-logo.svg';
 import MLLoader from '../ml-loader/ml-loader.jsx';
+import LoaderOverlay from '../loader-overlay/loader-overlay.jsx';
 import Spinner from 'openblock-gui/src/components/spinner/spinner.jsx';
 
 import {
     initSpeechCommands,
     collectAudioExample,
+    collectAudioExampleFromArrayBuffer,
     trainSounds,
     loadSoundClassifier,
     startListening,
     stopListening,
-    setActiveModel
+    setActiveModel,
+    getActiveModel
 } from '../../lib/ml-engine.js';
 import {
     saveAudioToFS        as saveAudioToIDB,
@@ -26,7 +29,7 @@ import {
 } from '../../lib/ml-fs.js';
 import {WaveformRenderer} from './waveform-renderer.js';
 import {computeRMS, blobToWavBlob} from '../../lib/audio-utils.js';
-import {saveAudioProject, loadAudioProject} from '../../lib/project-persistence.js';
+import {saveAudioProject, loadAudioProject, sanitizeLabels} from '../../lib/project-persistence.js';
 
 const CLASS_COLORS = ['#E05C3D', '#2EAA7E', '#004AAD', '#003A8C', '#F39C12', '#E91E63', '#1ABC9C', '#E67E22'];
 const MAX_THUMBS   = 9;
@@ -140,6 +143,8 @@ const AudioClassCard = React.forwardRef(({
     const mediaRecorderRef = useRef(null);
     const playingAudioRef  = useRef(null);
     const startingMicRef   = useRef(false);   // re-entry guard for startMic
+    const fileInputRef     = useRef(null);    // hidden <input> for audio upload
+    const [uploading, setUploading] = useState(false);
 
     /* Close menu when clicking outside */
     useEffect(() => {
@@ -434,6 +439,58 @@ const AudioClassCard = React.forwardRef(({
         isHoldingRef.current = false;
     }, []);
 
+    /* Add sample(s) from uploaded audio file(s). Each file becomes one ~1s example, built
+       through the SAME recognizer feature extractor as a mic recording (see
+       collectAudioExampleFromArrayBuffer) so the spectrogram format matches exactly. The
+       original file is kept as the playback blob. */
+    const handleUploadFiles = useCallback(async e => {
+        const files = Array.from(e.target.files || []);
+        e.target.value = ''; // reset so the same file can be picked again
+        if (!files.length) return;
+        if (!isEngineReady) {
+            await showAppDialog({
+                type: 'info', title: 'Audio Engine Loading',
+                message: 'The audio engine is still loading. Please wait a moment and try again.',
+                buttons: ['OK']
+            });
+            return;
+        }
+        setUploading(true);
+        let added = 0;
+        let failed = 0;
+        for (const file of files) {
+            try {
+                const arrayBuf = await file.arrayBuffer();
+                const specData = await collectAudioExampleFromArrayBuffer(label, arrayBuf);
+                const thumbUrl = renderSpectrumThumb(specData.data, specData.frameSize, color);
+                const id = generateId();
+                await saveAudioToIDB(projectId, id, Array.from(specData.data), specData.frameSize);
+                if (thumbUrl) await saveAudioThumbToIDB(projectId, id, thumbUrl);
+                try { await saveAudioBlobToIDB(projectId, id, file); } catch (_) { /* playback optional */ }
+                onRecorded(label, {
+                    id,
+                    type: 'audio',
+                    spectrogramData: Array.from(specData.data),
+                    frameSize: specData.frameSize
+                });
+                added++;
+            } catch (err) {
+                console.error('[AudioCard] upload error:', err);
+                failed++;
+            }
+        }
+        setUploading(false);
+        if (failed) {
+            await showAppDialog({
+                type: 'warning', title: 'Some Files Could Not Be Added',
+                message: `${added} sample${added !== 1 ? 's' : ''} added` +
+                    `${failed ? `, ${failed} could not be read` : ''}.`,
+                detail: 'Use short WAV, MP3, OGG or WEBM clips — about one second of the sound.',
+                buttons: ['OK']
+            });
+        }
+    }, [isEngineReady, label, projectId, color, onRecorded]);
+
     const commitRename = () => {
         const n = newName.trim();
         if (n && n !== label) onRename(label, n);
@@ -442,6 +499,7 @@ const AudioClassCard = React.forwardRef(({
 
     return (
         <div className={`${styles.classCard}${isDisabled ? ` ${styles.classCardDisabled}` : ''}`} ref={ref}>
+            {uploading && <LoaderOverlay message="Adding audio samples…" />}
             {/* Header */}
             <div className={styles.classCardHeader} style={{background: color}}>
                 <div className={styles.classCardNameRow}>
@@ -564,24 +622,54 @@ const AudioClassCard = React.forwardRef(({
                     ) : (
                         <div className={styles.idleAddMode}>
                             <p className={styles.addSamplesLabel}>Add Audio Samples</p>
-                            <button
-                                className={styles.micIdleBtn}
-                                onClick={startMic}
-                                disabled={micLoading}
-                                style={micLoading ? {opacity: 0.6, cursor: 'wait'} : undefined}
-                            >
-                                {micLoading ? (
-                                    <Spinner small level="info" />
-                                ) : (
-                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" width="28" height="28">
-                                        <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
-                                        <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
-                                        <line x1="12" y1="19" x2="12" y2="23"/>
-                                        <line x1="8" y1="23" x2="16" y2="23"/>
-                                    </svg>
-                                )}
-                                {micLoading ? 'Waiting for permission…' : 'Microphone'}
-                            </button>
+                            <input
+                                ref={fileInputRef}
+                                type="file"
+                                accept="audio/*"
+                                multiple
+                                style={{display: 'none'}}
+                                onChange={handleUploadFiles}
+                            />
+                            <div style={{display: 'flex', gap: '10px', width: '100%'}}>
+                                <button
+                                    className={styles.micIdleBtn}
+                                    onClick={startMic}
+                                    disabled={micLoading}
+                                    style={{flex: 1, minWidth: 0, ...(micLoading ? {opacity: 0.6, cursor: 'wait'} : {})}}
+                                >
+                                    {micLoading ? (
+                                        <Spinner small level="info" />
+                                    ) : (
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" width="28" height="28">
+                                            <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
+                                            <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+                                            <line x1="12" y1="19" x2="12" y2="23"/>
+                                            <line x1="8" y1="23" x2="16" y2="23"/>
+                                        </svg>
+                                    )}
+                                    {micLoading ? 'Waiting for permission…' : 'Microphone'}
+                                </button>
+                                <button
+                                    className={styles.micIdleBtn}
+                                    onClick={() => fileInputRef.current && fileInputRef.current.click()}
+                                    disabled={uploading || !isEngineReady}
+                                    style={{flex: 1, minWidth: 0,
+                                        ...((uploading || !isEngineReady)
+                                            ? {opacity: 0.6, cursor: uploading ? 'wait' : 'not-allowed'} : {})}}
+                                    title={!isEngineReady ? 'Audio engine is still loading…' : 'Add samples from audio files'}
+                                >
+                                    {uploading ? (
+                                        <Spinner small level="info" />
+                                    ) : (
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" width="28" height="28">
+                                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                                            <polyline points="17 8 12 3 7 8"/>
+                                            <line x1="12" y1="3" x2="12" y2="15"/>
+                                        </svg>
+                                    )}
+                                    {uploading ? 'Adding…' : 'Upload Audio'}
+                                </button>
+                            </div>
                         </div>
                     )}
                 </div>
@@ -828,7 +916,8 @@ AudioTestingPanel.propTypes = {
 /* ── Main Audio Training Page ── */
 const AudioTrainingPage = ({project, onBack, onUseInBlocks, onUpdateProject, onNewProject, onNewMLProject, onOpenMLProject}) => {
     const [labels,        setLabels]   = useState(() => {
-        const base = project.labels && project.labels.length > 0 ? project.labels : ['Class 1', 'Class 2'];
+        const raw  = project.labels && project.labels.length > 0 ? project.labels : ['Class 1', 'Class 2'];
+        const base = sanitizeLabels(raw);
         return base.includes(BACKGROUND_NOISE_LABEL) ? base : [BACKGROUND_NOISE_LABEL, ...base];
     });
     const [trainingData,  setData]     = useState({});
@@ -929,9 +1018,10 @@ const AudioTrainingPage = ({project, onBack, onUseInBlocks, onUpdateProject, onN
             if (fromOb && !signal.cancelled) {
                 if (fromOb.name) onUpdateProject({...project, name: fromOb.name});
                 if (fromOb.labels && fromOb.labels.length >= 2) {
-                    const loaded = fromOb.labels.includes(BACKGROUND_NOISE_LABEL)
-                        ? fromOb.labels
-                        : [BACKGROUND_NOISE_LABEL, ...fromOb.labels];
+                    const clean  = sanitizeLabels(fromOb.labels);
+                    const loaded = clean.includes(BACKGROUND_NOISE_LABEL)
+                        ? clean
+                        : [BACKGROUND_NOISE_LABEL, ...clean];
                     setLabels(loaded);
                     finalLabels = loaded;
                 }
@@ -1002,6 +1092,17 @@ const AudioTrainingPage = ({project, onBack, onUseInBlocks, onUpdateProject, onN
         saveAudioProject(project, labels, disabledLabels, trainingData, isTrained, {showDialog: false})
             .catch(() => {});
     }, [labels, trainingData, isTrained]); // eslint-disable-line react-hooks/exhaustive-deps
+
+    /* Keep the blocks palette in sync with LIVE class renames/adds/deletes — see the text page
+       for the full rationale. Without this, label edits don't reach window.__openblockMLModel
+       until a reload/retrain. sanitizeLabels() also keeps any corruption out of the bridge. */
+    useEffect(() => {
+        if (loadingData) return;
+        const active = getActiveModel();
+        if (active && active.projectId === project.id) {
+            setActiveModel({...active, labels: sanitizeLabels(labels)});
+        }
+    }, [labels]); // eslint-disable-line react-hooks/exhaustive-deps
 
     /* CRUD helpers */
     const addSample = useCallback((label, sample) => {

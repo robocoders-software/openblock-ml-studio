@@ -524,10 +524,76 @@ export const collectAudioExample = async label => {
     return _transferRec.collectExample(label);
 };
 
-/* ── Internal: adaptive training config (mirrors ML for Kids' _prepareTrainingConfig) ──
-   tiny:    avg < 15 samples/class OR total < 30  → 80 epochs, bs 64,  no val split, no augment
-   default: avg 15–50 samples/class               → 50 epochs, bs 128, val 0.15, augment 0.3
-   huge:    avg > 50 samples/class                → 40 epochs, bs 128, val 0.20, augment 0.3
+/* ── Public: build one audio example from an UPLOADED audio file ──
+   We MUST produce a spectrogram in exactly the same format as a mic recording, or mixing
+   uploaded and recorded samples would corrupt training. Rather than re-deriving the FFT
+   offline (fragile — must match the library's fftSize, overlap, windowing and dB scale),
+   we reuse the recognizer's OWN feature extractor: decode the file into a MediaStream and
+   temporarily redirect getUserMedia to it, so collectExample() reads the file instead of the
+   microphone. This guarantees an identical spectrogram. */
+export const collectAudioExampleFromArrayBuffer = async (label, arrayBuffer) => {
+    if (!_transferRec) throw new Error('Audio engine not ready. Call initSpeechCommands first.');
+
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if (!AC) throw new Error('Web Audio is not available in this environment.');
+
+    // 44100 Hz matches the model's expected sample rate; decodeAudioData resamples for us.
+    const ctx = new AC({sampleRate: 44100});
+    let audioBuffer;
+    try {
+        // slice(0) → decodeAudioData detaches the buffer; keep the caller's copy intact.
+        audioBuffer = await ctx.decodeAudioData(arrayBuffer.slice(0));
+    } catch (e) {
+        try { await ctx.close(); } catch (_) { /* noop */ }
+        throw new Error('Could not read this audio file. Please use a WAV, MP3, OGG or WEBM clip.');
+    }
+
+    const dest = ctx.createMediaStreamDestination();
+    const src  = ctx.createBufferSource();
+    src.buffer = audioBuffer;
+    src.loop   = true; // keep the stream fed so the ~1s capture window is always full
+    src.connect(dest);
+
+    const md      = navigator.mediaDevices;
+    const origGUM = md.getUserMedia ? md.getUserMedia.bind(md) : null;
+    let cleaned   = false;
+    const cleanup = () => {
+        if (cleaned) return;
+        cleaned = true;
+        try { delete md.getUserMedia; } catch (_) { if (origGUM) md.getUserMedia = origGUM; }
+        try { src.stop(); } catch (_) { /* noop */ }
+        try { src.disconnect(); } catch (_) { /* noop */ }
+        try { dest.disconnect(); } catch (_) { /* noop */ }
+        try { ctx.close(); } catch (_) { /* noop */ }
+    };
+
+    try {
+        // Redirect the recognizer's microphone request to our file-backed stream.
+        try {
+            md.getUserMedia = () => Promise.resolve(dest.stream);
+        } catch (_) {
+            cleanup();
+            throw new Error('Audio upload is not supported in this build.');
+        }
+        try { await ctx.resume(); } catch (_) { /* noop */ }
+        src.start();
+        const spec = await _transferRec.collectExample(label);
+        return spec; // { data: Float32Array, frameSize }
+    } finally {
+        cleanup();
+    }
+};
+
+/* ── Internal: adaptive training config ──
+   HEAD-ONLY transfer training (the fast path). Base-model fine-tuning
+   (`fineTuningEpochs`) and noise augmentation (`augmentByMixingNoiseRatio`) were tried to
+   squeeze out a little accuracy, but they make training 10–20× slower (fine-tuning re-trains
+   the whole base CNN; augmentation multiplies the dataset every epoch) — pushing a ~30s train
+   past 10 minutes. They are intentionally DISABLED here so audio training is fast again; the
+   small classifier head trains in seconds on the frozen embeddings.
+   tiny:    avg < 15 samples/class OR total < 30  → no val split (too few samples to spare)
+   default: avg 15–50 samples/class               → val 0.15
+   huge:    avg > 50 samples/class                → val 0.20
 ── */
 const _prepareSoundTrainingConfig = (totalSamples, numLabels, userEpochs, userBatch) => {
     const avg = totalSamples / Math.max(1, numLabels);
@@ -536,7 +602,7 @@ const _prepareSoundTrainingConfig = (totalSamples, numLabels, userEpochs, userBa
 
     if (tiny) {
         return {
-            epochs:                   userEpochs || 80,
+            epochs:                   userEpochs || 50,
             batchSize:                userBatch  || 64,
             validationSplit:          null,
             windowHopRatio:           0.25,
@@ -551,8 +617,8 @@ const _prepareSoundTrainingConfig = (totalSamples, numLabels, userEpochs, userBa
             batchSize:                userBatch  || 128,
             validationSplit:          0.2,
             windowHopRatio:           0.25,
-            augmentByMixingNoiseRatio: 0.3,
-            fineTuningEpochs:         12,
+            augmentByMixingNoiseRatio: null,
+            fineTuningEpochs:         null,
             optimizer:                'sgd'
         };
     }
@@ -561,8 +627,8 @@ const _prepareSoundTrainingConfig = (totalSamples, numLabels, userEpochs, userBa
         batchSize:                userBatch  || 128,
         validationSplit:          0.15,
         windowHopRatio:           0.25,
-        augmentByMixingNoiseRatio: 0.3,
-        fineTuningEpochs:         15,
+        augmentByMixingNoiseRatio: null,
+        fineTuningEpochs:         null,
         optimizer:                'sgd'
     };
 };
@@ -778,6 +844,22 @@ const _loadBayes = () =>
     import(/* webpackChunkName: "bayes" */ 'bayes-classifier')
         .then(m => m.default || m);
 
+// The bayes-classifier's Porter stemmer STRIPS STOPWORDS by default (tokenizeAndStem(text)
+// with no keepStops flag). So short, common-word inputs like "how are you", "what is this",
+// "is anyone there" tokenize to NOTHING → zero features → a useless uniform prediction (every
+// class = 1/N). Force it to KEEP stopwords so those everyday words become real features.
+// The stemmer is a shared singleton, so patching it once covers BOTH training (addDocument)
+// and classification (docToFeatures), keeping their vocabularies consistent. NOTE: a model
+// trained before this patch must be RE-TRAINED for the new words to enter its vocabulary.
+let _stemmerKeepsStopwords = false;
+const _keepStopwords = classifier => {
+    const st = classifier && classifier.stemmer;
+    if (!st || _stemmerKeepsStopwords || typeof st.tokenizeAndStem !== 'function') return;
+    const orig = st.tokenizeAndStem.bind(st);
+    st.tokenizeAndStem = text => orig(text, true); // keepStops = true → don't drop stopwords
+    _stemmerKeepsStopwords = true;
+};
+
 export const trainText = async (labels, trainingData, projectId, onStatus, onProgress) => {
     const total = labels.reduce((s, l) => s + (trainingData[l] || []).length, 0);
     if (total < 2)
@@ -790,6 +872,7 @@ export const trainText = async (labels, trainingData, projectId, onStatus, onPro
 
     const BayesClassifier = await _loadBayes();
     const classifier = new BayesClassifier();
+    _keepStopwords(classifier);
 
     for (const lbl of labels) {
         for (const ex of (trainingData[lbl] || [])) {
@@ -823,23 +906,69 @@ export const trainText = async (labels, trainingData, projectId, onStatus, onPro
     return {classifier, labels};
 };
 
+// Softmax "temperature" that calibrates the Naive-Bayes confidence. The PREDICTED class is
+// never affected (argmax is taken from the true, un-softened score) — this only shapes the
+// PERCENTAGES. Guide:
+//   T = 1   → raw NB probability (a clear one-word input over 5 classes reads ~64%);
+//   T > 1   → flatter/less confident (T=2.5 pushed a clear "hi" down to ~35% — too weak to
+//             separate from the other classes, so a confidence-guard threshold can't work);
+//   T < 1   → sharper/more confident for clearly-matching inputs while ambiguous / unknown
+//             text still stays low (spread toward uniform).
+// 0.8 makes a clear intent land ~75% and unrelated text stay well below it — good separation
+// for a confidence guard — without ever snapping to a fake hard 100/0. Lower = more confident.
+const TEXT_CONFIDENCE_TEMPERATURE = 0.8;
+
 /* ── Public: classify a text string using the Naive Bayes model ── */
 export const classifyText = async text => {
     if (!_bayesClassifier)
         throw new Error('No text model loaded. Train a model first.');
 
-    const clsns = _bayesClassifier.getClassifications((text || '').trim());
-    const labels = _textLabels;
+    const clf    = _bayesClassifier;
+    const labels = _textLabels || [];
+    const features = clf.docToFeatures((text || '').trim());
 
-    /* getClassifications returns raw probability scores; normalise to sum=1 */
-    const sum = clsns.reduce((s, c) => s + c.value, 0) || 1;
-    const confidences = {};
+    // Per-class LOG score = log P(class) + Σ log P(word|class). We compute it in LOG space
+    // (the library's getClassifications exponentiates this sum, which UNDERFLOWS to 0 for
+    // longer inputs — making every class read 0%). Mirrors bayes-classifier's own math.
+    const logScore = label => {
+        const classFeat = clf.classFeatures[label];
+        const total     = clf.classTotals[label];
+        if (!classFeat || !total) return -Infinity;
+        let lp = 0;
+        if (Array.isArray(features)) {
+            for (let i = 0; i < features.length; i++) {
+                if (features[i]) lp += Math.log((classFeat[i] || clf.smoothing) / total);
+            }
+        } else {
+            for (const key in features) {
+                lp += Math.log((classFeat[features[key]] || clf.smoothing) / total);
+            }
+        }
+        return Math.log(total / clf.totalExamples) + lp;
+    };
+
+    const rawLogs = labels.map(logScore);
+
+    // Predicted class = argmax of the TRUE (un-softened) score → identical to before.
     let topI = 0;
-    labels.forEach((lbl, i) => {
-        const c = clsns.find(x => x.label === lbl);
-        confidences[String(i)] = c ? c.value / sum : 0;
-        if (confidences[String(i)] > (confidences[String(topI)] || 0)) topI = i;
-    });
+    for (let i = 1; i < rawLogs.length; i++) {
+        if (rawLogs[i] > rawLogs[topI]) topI = i;
+    }
+
+    // Confidences = temperature-softened softmax via the numerically-stable log-sum-exp trick.
+    const T      = TEXT_CONFIDENCE_TEMPERATURE;
+    const scaled = rawLogs.map(l => l / T);
+    const maxLog = Math.max(...scaled);
+    const confidences = {};
+    if (!isFinite(maxLog)) {
+        // No usable signal (e.g. empty input) → maximally uncertain (uniform).
+        const u = labels.length ? 1 / labels.length : 0;
+        labels.forEach((lbl, i) => { confidences[String(i)] = u; });
+    } else {
+        const exps   = scaled.map(l => Math.exp(l - maxLog)); // -Infinity → 0
+        const sumExp = exps.reduce((s, e) => s + e, 0) || 1;
+        labels.forEach((lbl, i) => { confidences[String(i)] = exps[i] / sumExp; });
+    }
 
     return {label: labels[topI] || '', classIndex: topI, confidences};
 };
@@ -864,6 +993,7 @@ export const loadTextModelFromArtifacts = async (modelJsonStr, _weightData, labe
         const BayesClassifier = await _loadBayes();
         const {state, labels: savedLbls} = JSON.parse(modelJsonStr);
         const classifier = new BayesClassifier();
+        _keepStopwords(classifier);
         classifier.restore(state);
         const effectiveLabels = labels || savedLbls;
         if (projectId) {
@@ -889,6 +1019,7 @@ export const loadTextClassifier = async (projectId, labels) => {
             Buffer.from(raw).toString('utf8')
         );
         const classifier = new BayesClassifier();
+        _keepStopwords(classifier);
         classifier.restore(state);
         _bayesClassifier = classifier;
         _textLabels      = labels || savedLbls;
