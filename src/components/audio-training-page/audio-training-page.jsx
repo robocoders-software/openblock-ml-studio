@@ -15,6 +15,7 @@ import {
     loadSoundClassifier,
     startListening,
     stopListening,
+    recogniseSoundOnce,
     setActiveModel,
     getActiveModel
 } from '../../lib/ml-engine.js';
@@ -1052,7 +1053,8 @@ const AudioTrainingPage = ({project, onBack, onUseInBlocks, onUpdateProject, onN
                     labels:         finalLabels,
                     trainingStatus: trained ? 'ready' : 'idle',
                     startListening,
-                    stopListening
+                    stopListening,
+                    recogniseSoundOnce
                 });
             }
         } catch (err) {
@@ -1208,7 +1210,8 @@ const AudioTrainingPage = ({project, onBack, onUseInBlocks, onUpdateProject, onN
                 labels:         activeTrainLabels,
                 trainingStatus: 'ready',
                 startListening,
-                stopListening
+                stopListening,
+                recogniseSoundOnce
             });
         } catch (err) {
             setStatus(`Error: ${err.message}`);
@@ -1284,7 +1287,8 @@ const AudioTrainingPage = ({project, onBack, onUseInBlocks, onUpdateProject, onN
             labels,
             trainingStatus: isTrained ? 'ready' : 'idle',
             startListening,
-            stopListening
+            stopListening,
+            recogniseSoundOnce
         });
     };
 

@@ -14,6 +14,7 @@ import {
     fsWriteFile, fsReadFile, fsDeleteProject,
     getImageFromFS, saveImageToFS
 } from './ml-fs.js';
+import {reduceFrameToMatches, createOneShotSampler} from './ml-audio-oneshot.js';
 
 /* ── Singletons ── */
 let _tf         = null;
@@ -409,6 +410,13 @@ let _baseRecognizer   = null;   // singleton base recognizer
 let _transferRec      = null;   // current project's transfer recognizer
 let _soundProjectId   = null;
 let _soundModelInfo   = null;   // { numFrames, fftSize }
+let _isListening      = false;  // true while a CONTINUOUS listen() is active (Testing panel
+                                // or blocks "start listening"). The one-shot recogniseSoundOnce
+                                // must defer to it — there is only ONE shared recognizer, so a
+                                // one-shot must never listen()/stopListening() over a live one.
+let _oneShotInFlight  = null;   // Promise of an in-progress one-shot capture (coalesces callers)
+let _lastOneShot      = null;   // { matches, at } — recent one-shot result, briefly cached so
+                                // "recognise sound (label)" + "(confidence)" share ONE capture.
 
 const _loadScriptTag = url => new Promise((resolve, reject) => {
     const s = document.createElement('script');
@@ -510,6 +518,7 @@ export const initSpeechCommands = async (projectId, onStatus) => {
         _soundProjectId = projectId;
         const shape     = _transferRec.modelInputShape();
         _soundModelInfo = {numFrames: shape[1], fftSize: shape[2]};
+        _lastOneShot    = null; // stale cache must not survive a project/recognizer switch
     }
 
     onStatus && onStatus('');
@@ -720,8 +729,16 @@ export const startListening = async (callback, options = {}) => {
     // Callers that want to suppress low-confidence results should filter in the callback.
     // ML for Kids uses 0.70 for blocks (high confidence gate), but the testing
     // panel needs all scores to always update the bars.
+    // Claim ownership FIRST so any in-flight one-shot's teardown sees a continuous
+    // listener and won't stopListening() over us (see recogniseSoundOnce).
+    _isListening = true;
+    // A one-shot's temporary listener may still hold the recognizer — clear it before we
+    // start ours, or listen() would throw "already started listening".
+    if (_oneShotInFlight) {
+        try { await _transferRec.stopListening(); } catch (_) { /* nothing to stop */ }
+    }
     const threshold = options.threshold !== undefined ? options.threshold : 0.0;
-    return _transferRec.listen(result => {
+    const p = _transferRec.listen(result => {
         const lbls = _transferRec.wordLabels();
         if (!lbls) return;
         const matches = lbls.map((lbl, i) => ({
@@ -730,12 +747,91 @@ export const startListening = async (callback, options = {}) => {
         })).sort((a, b) => b.prob - a.prob);
         callback(matches);
     }, {probabilityThreshold: threshold});
+    // If listening fails to start, don't leave the flag stuck on.
+    Promise.resolve(p).catch(() => { _isListening = false; });
+    return p;
 };
 
 export const stopListening = async () => {
+    _isListening = false;
     if (_transferRec) {
         try { await _transferRec.stopListening(); } catch (_) {}
     }
+};
+
+/* ── Public: one-shot mic classification ──
+   Records from the microphone and classifies ONCE, returning the sorted, noise-filtered
+   score distribution (probabilities as 0-100). Powers the "recognise sound (label)/
+   (confidence)" blocks, mirroring the text project's one-shot "recognise text" blocks.
+
+   IMPORTANT: we do NOT use recognizer.recognize() here. On a TRANSFER recognizer,
+   recognize() is inherited un-overridden from the base recognizer, so it classifies
+   against the BASE 20-word vocabulary (yes/no/one/two/four/…) instead of the trained
+   transfer words — it returns garbage labels like "four". Only listen() runs the
+   transfer model. So a one-shot is a short, self-terminating listen() session.
+
+   Sampling (see createOneShotSampler) runs for up to ONESHOT_MAX_MS and returns the most
+   confident frame — so the block waits for the actual sound instead of grabbing the first
+   (usually silent) frame, and a hard timer guarantees it never hangs even if the mic
+   delivers no frames at all. */
+const ONESHOT_MAX_MS       = 2000;  // sample window — long enough for the user to make the sound
+const ONESHOT_EARLY_EXIT   = 75;    // a frame this confident (%) ends sampling immediately
+const ONESHOT_CACHE_TTL_MS = 400;   // reuse the last result for back-to-back label+confidence
+const ONESHOT_TIMEOUT_PAD  = 600;   // extra ms before the hard safety timeout fires
+
+export const recogniseSoundOnce = async () => {
+    if (!_transferRec) throw new Error('Audio engine not ready.');
+    // A continuous listener already owns the shared recognizer (Testing panel or blocks
+    // "start listening"). Do NOT start our own listen — and never stopListening() — or we'd
+    // freeze that live listener. Bail; the caller falls back to snapshot / "unknown".
+    if (_isListening) return [];
+    // Share ONE capture between "recognise sound (label)" and "(confidence)" used back-to-back
+    // in the same tick, instead of recording twice with possibly-disagreeing results.
+    if (_lastOneShot && (Date.now() - _lastOneShot.at) < ONESHOT_CACHE_TTL_MS) {
+        return _lastOneShot.matches;
+    }
+    // Coalesce genuinely concurrent callers onto the single in-flight capture.
+    if (_oneShotInFlight) return _oneShotInFlight;
+
+    _oneShotInFlight = new Promise(resolve => {
+        const sampler = createOneShotSampler({
+            maxMs:     ONESHOT_MAX_MS,
+            earlyExit: ONESHOT_EARLY_EXIT,
+            startTime: Date.now()
+        });
+        let settled = false;
+        let timer   = null;
+        const done = matches => {
+            if (settled) return;
+            settled = true;
+            if (timer) clearTimeout(timer);
+            const out = matches || [];
+            _lastOneShot = {matches: out, at: Date.now()};
+            // Tear down our temporary listener — but ONLY if a continuous listener has not
+            // claimed the recognizer meanwhile, otherwise we'd stop THEIR live stream.
+            const teardown = _isListening
+                ? Promise.resolve()
+                : Promise.resolve().then(() => _transferRec.stopListening()).catch(() => {});
+            teardown.then(() => resolve(out));
+        };
+        // Hard safety net: never hang, even if the mic delivers no frames at all.
+        timer = setTimeout(() => done(sampler.flush().matches), ONESHOT_MAX_MS + ONESHOT_TIMEOUT_PAD);
+        try {
+            _transferRec.listen(result => {
+                const matches = reduceFrameToMatches(result && result.scores, _transferRec.wordLabels());
+                const verdict = sampler.offer(matches, Date.now());
+                if (verdict) done(verdict.matches);
+            }, {
+                probabilityThreshold:            0,
+                overlapFactor:                   0.5,
+                invokeCallbackOnNoiseAndUnknown: true
+            }).catch(() => done(sampler.flush().matches));
+        } catch (_) {
+            done(sampler.flush().matches);
+        }
+    });
+    _oneShotInFlight.catch(() => {}).then(() => { _oneShotInFlight = null; });
+    return _oneShotInFlight;
 };
 
 /* ═════════════════════════════════════════════════════════════════

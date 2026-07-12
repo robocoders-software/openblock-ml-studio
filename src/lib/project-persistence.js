@@ -19,7 +19,7 @@
 import {fsWriteFile, loadProjectImagesFromFS, loadProjectAudioFromFS} from './ml-fs.js';
 import {
     loadImageClassifier, getMobileNet,
-    loadSoundClassifier, startListening, stopListening,
+    loadSoundClassifier, startListening, stopListening, recogniseSoundOnce,
     loadTextClassifier, classifyText,
     setActiveModel
 } from './ml-engine.js';
@@ -245,7 +245,8 @@ export const loadAudioProject = async (projectId) => {
                     labels:         savedLabels,
                     trainingStatus: 'ready',
                     startListening,
-                    stopListening
+                    stopListening,
+                    recogniseSoundOnce
                 });
             }
         } catch (e) {
