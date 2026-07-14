@@ -754,6 +754,9 @@ export const startListening = async (callback, options = {}) => {
 
 export const stopListening = async () => {
     _isListening = false;
+    // Stopping ends the audio session — a cached one-shot result must not survive it and be
+    // replayed to the first capture of the next run.
+    _lastOneShot = null;
     if (_transferRec) {
         try { await _transferRec.stopListening(); } catch (_) {}
     }
